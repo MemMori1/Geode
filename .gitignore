@@ -18,6 +18,3 @@
 # 崩溃恢复与备份
 *.geojournal
 *.bak
-
-# gh 授权缺 workflow scope 时先本地保留 CI 配置（见 README「CI 启用」）
-.github/workflows/

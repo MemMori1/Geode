@@ -1,0 +1,29 @@
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  gate:
+    name: fmt + clippy + test + deps
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets --workspace -- -D warnings
+      - run: cargo test --workspace
+      - run: cargo doc --workspace --no-deps
+      # 18 §3.2 / E0101-E0104：依赖方向与 GUI 污染是机器可判的，必须在 PR 上跑
+      - run: cargo run -p xtask -- deps
