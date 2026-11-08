@@ -1,0 +1,20 @@
+[package]
+name = "geode-core"
+description = "Geode 的叶子 crate：偏移、区间、诊断、值与 id 等全局契约类型"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true, optional = true }
+thiserror = { workspace = true }
+
+[features]
+default = []
+serde = ["dep:serde"]
+
+[lints]
+workspace = true

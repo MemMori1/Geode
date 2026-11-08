@@ -1,0 +1,16 @@
+[package]
+name = "geode-provider"
+description = "Geode 的数据源抽象：本地文件、原始磁盘、进程内存、GDB、SSH 等"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+geode-core = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

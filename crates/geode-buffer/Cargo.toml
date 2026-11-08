@@ -1,0 +1,16 @@
+[package]
+name = "geode-buffer"
+description = "Geode 的文档缓冲区：M0 为只读骨架，M1 换成计数型 B-tree piece table"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+geode-core = { workspace = true }
+geode-provider = { workspace = true }
+
+[lints]
+workspace = true

@@ -1,0 +1,3 @@
+# 设计文档 18 §4.1：内核 crate 不开 GUI，UI 线程不做 >1ms 的工作。
+# 这些阈值用于避免整数与浮点在坐标运算中混用（见 05 §4.2）。
+avoid-breaking-exported-api = false

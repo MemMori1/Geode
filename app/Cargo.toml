@@ -1,0 +1,20 @@
+[package]
+name = "app"
+description = "Geode 的可执行入口（二进制名 `geode`）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "geode"
+path = "src/main.rs"
+
+[dependencies]
+geode-core = { workspace = true }
+geode-provider = { workspace = true }
+
+[lints]
+workspace = true
