@@ -1,0 +1,20 @@
+# 构建产物
+/target/
+**/target/
+
+# 临时/脚本草稿
+.tmp/
+
+# 基准数据集（生成脚本入库，数据不入库；见 docs/21-benchmark-suite.md §4.1）
+/bench/data/
+/data/
+
+# 本地环境
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# 崩溃恢复与备份
+*.geojournal
+*.bak
