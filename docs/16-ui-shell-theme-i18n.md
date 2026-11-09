@@ -145,8 +145,8 @@ pub struct DomainTokens {
     pub hex_offset: Color32, pub hex_ascii: Color32, pub hex_null: Color32, pub hex_ascii_nonprint: Color32,
     pub hex_patch_insert_bg: Color32, pub hex_patch_delete_bg: Color32,
     pub hex_patch_insert_fg: Color32, pub hex_patch_delete_fg: Color32,
-    pub layer: [Color32; 9],                    // 顺序与 00 §5.3 的 Layer 一致
-    pub layer_bg: [Option<Color32>; 9],
+    pub layer: [Color32; Layer::COUNT],          // 顺序与 00 §5.3 的 Layer 一致（当前 10 个变体）
+    pub layer_bg: [Option<Color32>; Layer::COUNT],
     pub severity: [Color32; 3],                 // Error / Warning / Info
 }
 ```
@@ -173,7 +173,7 @@ pub struct FontSet {
     pub metrics: MetricsCache,                  // 每 size 的 advance/行高/ascent
 }
 pub struct MetricsCache { by_size: SmallVec<[(u16, FontMetrics); 8]>, generation: u32 }
-pub struct FontMetrics { pub advance: f32, pub cjk_advance: f32, pub row_height: f32, pub ascent: f32 }
+pub struct FontMetrics { pub advance: f32, pub cjk_advance: f32, pub row_height: f32, pub ascent: f32, pub descent: f32 }
 ```
 
 `advance` 与 `cjk_advance` **必须实测自字形**（`galley.size()`/`Font::glyph_width`），禁止 `advance = size * 0.6` 之类的假设（见 `01-competitor-feature-research §3.2`）。hex 视图只用 `mono_family`，不允许 fallback（§4.7）。
@@ -270,8 +270,9 @@ offset = "gray-6"   ascii = "gray-9"   ascii-nonprint = "gray-3"   null-byte = "
 patch-insert-bg = "#12351f"   patch-insert-fg = "green-5"
 patch-delete-bg = "#3a1416"   patch-delete-fg = "red-5"
 
-[layer]                              # 与 00 §5.3 的 9 个 Layer 一一对应，必须齐全
+[layer]                              # 与 00 §5.3 的 10 个 Layer 一一对应且顺序一致，必须齐全
 value = "gray-9"   search = "#facc15"   structure = "cyan-5"   selection = "blue-4"
+analysis = "#a3e635"   # 00 §5.3 的 Analysis 层（10 变体齐全，见 26 §4.9）
 bookmark = "violet-5"   diff = "#f472b6"   yara = "red-5"   ai = "#c084fc"   cursor = "#ffffff"
 [severity]
 error = "red-5"   warning = "amber-5"   info = "blue-6"
@@ -309,7 +310,7 @@ error = "red-5"   warning = "amber-5"   info = "blue-6"
 - **UI 文字另用一套**：`Inter`（Latin/UI，可读性）+ 系统 CJK 字体栈（macOS `PingFang SC`、Windows `Microsoft YaHei`、Linux `Noto Sans CJK SC`）→ 缺字回退到 `Sarasa Mono SC`。这样做的代价是 CJK UI 文本跨平台字面不同，收益是二进制少 ~8MB 且观感"本地化"。
 - **体积预算**：`Sarasa Mono SC Regular` 子集（ASCII + Latin-1 + 常用标点 + GB2312 6763 汉字 + 假名）≈ **3.4MB**；`Inter` Latin 子集 ≈ **220KB**；UI CJK **不打包**（0B）。字体总占用上限 **4MB**，CI 里 `ls -l` 断言，超了必须走子集化重跑。
 - 子集化流程：`pyftsubset`（构建期，脚本入 `xtask fonts-subset`）→ 保留 `--unicodes` 白名单 + `--layout-features='kern,liga,calt'` → 输出校验"`advance` 与 `cjk_advance` 比例仍为 2.0"（子集化破坏度量是真实陷阱）。
-- **高 DPI 与度量缓存**：`pixels_per_point` 变化时 `MetricsCache.generation += 1` 并要求 epaint 重建字形图集（图集按物理像素栅格化，缩放比变了必须重建）；度量按 `(size, ppp)` 双键缓存，避免每帧 `galley` 计算。行高统一取 `round(max(metrics.row_height, ppp*size*1.35))`，避免半像素模糊。
+- **高 DPI 与度量缓存**：`pixels_per_point` 变化时 `MetricsCache.generation += 1` 并要求 epaint 重建字形图集（图集按物理像素栅格化，缩放比变了必须重建）；度量按 `(size, ppp)` 双键缓存，避免每帧 `galley` 计算。行高统一取 `round(max(metrics.row_height, ppp*size*1.35))`，避免半像素模糊。**例外**：hex 网格行高走 `05 §3.3` 的 `ceil(ascent+descent)+2*row_pad`（需要 `row_pad` 保点击性），两处不得互相套用。
 - 字体图集上限：**单通道（`Alpha`/R8）2048×2048 = 4MB**，不够时先扩到 4096×4096（16MB）再拒绝新字形（渲 `□`）。不用 RGBA8——颜色在着色阶段施加，RGBA 图集是 4 倍浪费。
 - 用户自定义字体：`config.ui.font_hex` / `font_ui` 支持本地路径；**hex 字体加载后必须实测等宽性**（随机取 200 个已用字形比对 `advance` 与 CJK 比例），不合格则拒绝并回退内置 + 明确报错（`E0130 字体不是等宽`）。
 
@@ -318,7 +319,7 @@ error = "red-5"   warning = "amber-5"   info = "blue-6"
 - **键盘可达**：每条命令都有快捷键或可达的 Tab 路径（菜单栏 `Alt`/`F10` 唤起 → 方向键 → `Enter`）；面板内的自定义列表（结构树、命令面板）必须响应 `↑↓ Home End PgUp PgDn Enter Esc`——这是唯一的硬要求，用 `geode-ui` 统一的 `ListNav` 辅助实现。
 - **屏幕阅读器（诚实说明）**：egui 通过 `accesskit` 向平台暴露语义树（Windows UIA / macOS NSAccessibility / Linux AT-SPI），当前限制是：① **自绘内容不在语义树里**——hex 网格是用 `Painter` 画的矩形，accesskit 看不到；② 树节点数量与每帧更新成本有冲突。因此本项目的方案是"**可访问镜像**"：为当前选区/光标所在行生成一段 `accesskit` 文本节点（`"偏移 0x1A3C：4D 5A 90 00，ASCII MZ.."`），而不是试图暴露 4000 个单元格；③ 结构树与 Inspector 用真实 widget 渲染（非自绘），天然可读。**v1 只做到这个程度**，完整 NVDA/VoiceOver 验收列为开放问题（§10.4）。
 - **高对比度**：`high-contrast` 主题（纯黑底 + 纯黄/白字，目标对比度 7:1）+ 强制 1px 实线边框 + 关闭渐变/阴影。跟随系统高对比开关（Windows `SystemParametersInfo`、macOS `AXAPI`）时自动切到该主题。
-- **色盲友好**：`layer.*` 与 `severity.*` **不得只靠色相区分**——Error/Warning/Info 在结构树与诊断列表里同时带图标/文字前缀；Diff 的插入/删除同时用底色 + 左侧 3px 竖条；hex 补丁行同时用底色 + `+`/`-` 标记。提供 `theme.deuteranopia = false` 开关：为 true 时把红/绿系换成蓝/橙系。
+- **色盲友好**：`layer.*` 与 `severity.*` **不得只靠色相区分**——Error/Warning/Info 在结构树与诊断列表里同时带图标/文字前缀；Diff 的插入/删除同时用底色 + 左侧 3px 竖条；hex 补丁行同时用底色 + `+`/`-` 标记。提供 `theme.deuteranopia = false` 开关：为 true 时把红/绿系换成 Okabe-Ito 蓝/橙系。**实现形态**：开关派生出一套命名主题 `dark-deuteranopia`（用户侧仍只是一个布尔，但快照基线可按命名主题比对，见 26 §4.9）。
 - **减少动效**：`config.ui.reduce_motion = true`（跟随系统 `prefers-reduced-motion`）→ 关闭主题交叉淡入、面板展开动画、光标闪烁（改为常亮）。
 
 ---
@@ -410,7 +411,7 @@ error = "red-5"   warning = "amber-5"   info = "blue-6"
 
 | 层 | 内容 | 门禁 |
 |---|---|---|
-| UI 快照 | 固定 `egui::Context` 输入（尺寸/DPI 1.0、1.5、2.0）→ 渲染到离屏纹理 → 与基准 PNG 做 ≤ 0.3% 像素差比对 | 5 主题 × 3 DPI × 3 布局（默认/全开/最大化）= 45 张基准图 |
+| UI 快照 | 固定 `egui::Context` 输入（尺寸/DPI 1.0、1.5、2.0）→ 渲染到离屏纹理 → 与基准 PNG 做 ≤ 0.1% 像素差比对（与 05 §9 / 18 §9 同口径；hex 网格另有一层 12 张**零容差**几何基线，见 26 §9.1） | 内置 3 套主题 + 1 套派生（deuteranopia）× 3 DPI × 3 布局（默认/全开/最大化）= 36 张基准图；分发包主题（solarized/nord）不进 CI 基线，避免依赖外部 `.geopkg` |
 | 布局不变量 | 属性测试：随机拖动/显隐/最大化序列后，宽度恒在 min/max、无负宽、`Center ≥ 480` | 1 000 随机序列 |
 | 快捷键冲突 / 命令完整性 | 加载 34 条默认绑定 + 一份"故意冲突"的 keymap，断言检测出且旧绑定被解除；`xtask` 断言每条 `Command` 有 `title_key`、该 key 在 en-US 存在、且在菜单或工具栏可达 | 冲突矩阵 0 漏报；0 孤儿命令 |
 | i18n 覆盖率 / 伪本地化 | `xtask i18n-check`：en-US 100%、zh-CN ≥ 98%、占位符集合一致；以 `pseudo` 渲染全部快照 | 不一致即 fail；0 文本截断 |
@@ -431,4 +432,4 @@ error = "red-5"   warning = "amber-5"   info = "blue-6"
 5. **语言包是否走内容库分发**：走则无需发版即可加语言，但引入"翻译质量与许可证"审核负担（同 15 §4.8）。倾向：内置 `zh-CN`/`en-US` 随包，其余走内容库。
 6. **命令面板是否需要"参数化执行"**（如"跳转到 0x1234"直接在面板里输参数）：VSCode 的 `>` 命令无参数，但编辑器里这很有用。倾向 v2。
 7. **`MetricsCache` 与 epaint 图集的耦合**：egui 0.2x 的图集重建接口是否够用（能否只失效指定字体）需一次 spike 验证；若不够，可能要 fork `epaint` 的 atlas 逻辑，成本较高。
-8. **UI 快照测试的稳定性**：字体栅格化在不同 egui 版本间会有亚像素差异，0.3% 阈值是否够？需在 CI 上跑 20 次观察噪声分布再定阈值。
+8. **UI 快照测试的稳定性**：字体栅格化在不同 egui 版本间会有亚像素差异，0.1% 阈值是否够？需在 CI 上跑 20 次观察噪声分布再定阈值。

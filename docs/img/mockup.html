@@ -1,0 +1,1814 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Geode 视觉原型 · Hex Viewer Mockup</title>
+<!--
+  Geode（晶洞）单文件交互原型 —— 给 Rust/egui 实现提供视觉靶子。
+  零外部依赖：无 CDN、无 http(s) 链接、无外部字体、无图片。
+  规范来源：docs/16 §3.1（布局与像素高）、16 §4.5（配色）、
+            docs/05 §4.2（虚拟滚动/自绘滚动条）、§4.5（光标与 nibble）、§4.7（高亮合成）
+            docs/25 §4.2（线框）
+-->
+<style>
+/* ============================================================
+   1. 主题 token（深色为默认；JS 会按主题覆盖 :root 上的同名变量）
+   ============================================================ */
+:root{
+  --bg-base:#0b0d10; --bg-raised:#14181d; --bg-sunken:#1c2229;
+  --bg-hover:#1c2229; --bg-active:#2a323b;
+  --border-normal:#2a323b; --border-sep:#1c2229; --border-focus:#60a5fa;
+  --fg-primary:#e6ebf2; --fg-secondary:#9aa4b1; --fg-disabled:#2a323b; --on-accent:#0b0d10;
+  --accent:#3b82f6; --accent-2:#60a5fa; --selection:#3b82f6;
+  --hex-offset:#9aa4b1; --hex-ascii:#e6ebf2; --hex-nonprint:#5c6672; --hex-null:#2a323b;
+  --patch-ins-bg:#12351f; --patch-ins-fg:#22c55e; --patch-del-bg:#3a1416; --patch-del-fg:#ef4444;
+  --l-search:#facc15; --l-structure:#22d3ee; --l-bookmark:#a78bfa;
+  --l-cursor:#ffffff; --l-value:#e6ebf2;
+  --sev-warn:#f59e0b; --sev-error:#ef4444; --ok:#22c55e;
+  --warn-soft:#3a2f0b;
+  --radius:4px;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --ui: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+/* ============================================================
+   2. 基础排版
+   ============================================================ */
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{
+  background:var(--bg-base); color:var(--fg-primary);
+  font:12px/1.45 var(--ui);
+  overflow:hidden;
+  user-select:none; -webkit-user-select:none;
+}
+input,select{user-select:text; font:inherit; color:inherit}
+button{font:inherit; color:inherit; background:none; border:0; cursor:pointer}
+.mono{font-family:var(--mono)}
+::-webkit-scrollbar{width:0;height:0}
+
+/* ============================================================
+   3. 外壳：说明条 / 菜单栏 / 工具栏 / 主区 / 状态栏
+      像素高严格来自 16 §3.1：28 / 36 / 24，左右栏 260 / 320
+   ============================================================ */
+#app{display:flex; flex-direction:column; height:100%}
+
+#notice{
+  flex:0 0 22px; height:22px; display:flex; align-items:center; gap:8px;
+  padding:0 10px; font-size:11px; letter-spacing:.02em;
+  background:var(--warn-soft); color:var(--sev-warn);
+  border-bottom:1px solid var(--border-normal);
+}
+#notice .grow{flex:1 1 auto}
+#notice button{color:var(--sev-warn); opacity:.8; padding:0 4px}
+#notice button:hover{opacity:1}
+#notice.hidden{display:none}
+
+#menubar{
+  flex:0 0 28px; height:28px; display:flex; align-items:center;
+  background:var(--bg-raised); border-bottom:1px solid var(--border-sep);
+  padding:0 6px; position:relative; z-index:40;
+}
+.menu{position:relative}
+.menu>button{
+  height:22px; padding:0 9px; border-radius:var(--radius); color:var(--fg-secondary);
+  font-size:12px;
+}
+.menu>button:hover,.menu.open>button{background:var(--bg-active); color:var(--fg-primary)}
+.dropdown{
+  display:none; position:absolute; top:24px; left:0; min-width:210px;
+  background:var(--bg-raised); border:1px solid var(--border-normal);
+  border-radius:var(--radius); padding:4px; box-shadow:0 8px 24px rgba(0,0,0,.45);
+  z-index:50;
+}
+.menu.open .dropdown{display:block}
+.dropdown .item{
+  display:flex; align-items:center; gap:10px; height:24px; padding:0 8px;
+  border-radius:var(--radius); color:var(--fg-primary); font-size:12px; width:100%;
+  text-align:left; white-space:nowrap;
+}
+.dropdown .item:hover{background:var(--bg-active)}
+.dropdown .item .k{margin-left:auto; color:var(--fg-disabled); font-family:var(--mono); font-size:11px}
+.dropdown .sep{height:1px; background:var(--border-sep); margin:4px 2px}
+#mb-right{margin-left:auto; display:flex; align-items:center; gap:8px; color:var(--fg-secondary); font-size:11px}
+#mb-right .jobs{display:flex; align-items:center; gap:5px}
+#mb-right .spin{width:9px;height:9px;border:1.5px solid var(--accent);border-right-color:transparent;border-radius:50%}
+
+#toolbar{
+  flex:0 0 36px; height:36px; display:flex; align-items:center; gap:6px;
+  padding:0 8px; background:var(--bg-base);
+  border-bottom:1px solid var(--border-normal); position:relative; z-index:30;
+}
+.tbtn{
+  height:24px; padding:0 9px; border-radius:var(--radius);
+  border:1px solid transparent; color:var(--fg-secondary); font-size:12px;
+  display:inline-flex; align-items:center; gap:6px;
+}
+.tbtn:hover{background:var(--bg-hover); color:var(--fg-primary); border-color:var(--border-normal)}
+.tbtn:active{background:var(--bg-active)}
+.tbtn .ic{font-family:var(--mono); font-size:11px; color:var(--accent-2)}
+.vsep{width:1px; height:18px; background:var(--border-normal); margin:0 4px}
+#gotoInput{
+  width:112px; height:24px; padding:0 8px; border-radius:var(--radius);
+  background:var(--bg-sunken); border:1px solid var(--border-normal);
+  color:var(--fg-primary); font-family:var(--mono); font-size:12px; outline:none;
+}
+#gotoInput:focus{border-color:var(--border-focus)}
+#gotoInput::placeholder{color:var(--fg-disabled)}
+select.sel{
+  height:24px; padding:0 6px; border-radius:var(--radius);
+  background:var(--bg-sunken); border:1px solid var(--border-normal);
+  color:var(--fg-primary); font-size:12px; outline:none;
+}
+select.sel:focus{border-color:var(--border-focus)}
+#tb-right{margin-left:auto; display:flex; align-items:center; gap:6px; color:var(--fg-disabled); font-size:11px}
+
+/* 主区三栏 */
+#main{flex:1 1 auto; display:flex; min-height:0; position:relative}
+#left{
+  flex:0 0 260px; width:260px; min-width:180px; max-width:480px;
+  background:var(--bg-raised); border-right:1px solid var(--border-normal);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+#right{
+  flex:0 0 320px; width:320px; min-width:240px; max-width:560px;
+  background:var(--bg-raised); border-left:1px solid var(--border-normal);
+  display:flex; flex-direction:column; overflow:hidden;
+}
+#center{flex:1 1 auto; min-width:0; display:flex; flex-direction:column; background:var(--bg-base)}
+.splitter{flex:0 0 5px; width:5px; cursor:col-resize; background:transparent}
+.splitter:hover{background:var(--accent)}
+
+/* 状态栏 */
+#statusbar{
+  flex:0 0 24px; height:24px; display:flex; align-items:center; gap:0;
+  padding:0 10px; background:var(--bg-raised);
+  border-top:1px solid var(--border-normal);
+  font-size:11px; color:var(--fg-secondary); white-space:nowrap; overflow:hidden;
+}
+#statusbar .cell{display:flex; align-items:center; gap:5px; padding:0 9px; height:100%}
+#statusbar .cell+.cell{border-left:1px solid var(--border-sep)}
+#statusbar .k{color:var(--fg-disabled)}
+#statusbar .v{color:var(--fg-primary); font-family:var(--mono)}
+#statusbar .v.off{color:var(--accent-2)}
+#statusbar .v.warn{color:var(--sev-warn)}
+#statusbar .v.dim{color:var(--fg-secondary)}
+#statusbar .grow{flex:1 1 auto}
+#statusbar .bar{width:46px;height:5px;background:var(--bg-sunken);border-radius:3px;overflow:hidden}
+#statusbar .bar>i{display:block;height:100%;width:43%;background:var(--accent)}
+
+/* ============================================================
+   4. 左栏：文档列表 + 结构树
+   ============================================================ */
+.panel-hd{
+  flex:0 0 26px; height:26px; display:flex; align-items:center; gap:6px;
+  padding:0 10px; font-size:11px; font-weight:600; letter-spacing:.04em;
+  color:var(--fg-secondary); text-transform:uppercase;
+  background:var(--bg-sunken); border-bottom:1px solid var(--border-normal);
+  border-top:1px solid var(--border-sep);
+}
+.panel-hd .hd-hint{margin-left:auto; font-weight:400; text-transform:none; letter-spacing:0; color:var(--fg-disabled); font-family:var(--mono)}
+#left .list{overflow:auto; padding:4px 6px}
+#left .doclist{flex:0 0 auto}
+.doc{
+  display:flex; align-items:center; gap:7px; height:24px; padding:0 6px;
+  border-radius:var(--radius); font-size:12px; color:var(--fg-secondary); cursor:pointer;
+}
+.doc:hover{background:var(--bg-hover)}
+.doc.active{background:var(--bg-active); color:var(--fg-primary)}
+.doc .dot{width:6px;height:6px;border-radius:50%;background:var(--fg-disabled)}
+.doc.active .dot{background:var(--accent)}
+.doc .badge{margin-left:auto; font-size:10px; color:var(--sev-warn)}
+.doc .badge.ro{color:var(--fg-disabled)}
+
+#tree{flex:1 1 auto; overflow:auto; padding:4px 6px; font-size:12px}
+.node{
+  display:flex; align-items:center; gap:4px; height:22px; padding-right:6px;
+  border-radius:var(--radius); cursor:pointer; color:var(--fg-secondary); white-space:nowrap;
+}
+.node:hover{background:var(--bg-hover); color:var(--fg-primary)}
+.node.sel{background:var(--bg-active); color:var(--fg-primary)}
+.node .tw{width:12px; text-align:center; color:var(--fg-disabled); font-size:9px; flex:0 0 12px}
+.node .nm{overflow:hidden; text-overflow:ellipsis}
+.node .cf{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--fg-disabled)}
+.node .cf.hi{color:var(--ok)} .node .cf.mid{color:var(--sev-warn)}
+.node .kind{font-size:10px; color:var(--l-structure); font-family:var(--mono)}
+.tree .kids.hide{display:none}
+.tree .kids{position:relative}
+.tree .kids::before{
+  content:""; position:absolute; left:11px; top:0; bottom:2px; width:1px; background:var(--border-normal);
+}
+
+/* ============================================================
+   5. 中栏：标签页 + hex 画布 + 自绘滚动条
+   ============================================================ */
+#tabs{
+  flex:0 0 30px; height:30px; display:flex; align-items:flex-end; gap:2px;
+  padding:0 8px; background:var(--bg-raised); border-bottom:1px solid var(--border-normal);
+}
+.tab{
+  height:25px; padding:0 10px; display:flex; align-items:center; gap:8px;
+  border:1px solid transparent; border-bottom:0; border-radius:var(--radius) var(--radius) 0 0;
+  font-size:12px; color:var(--fg-secondary); font-family:var(--mono);
+}
+.tab.active{background:var(--bg-base); color:var(--fg-primary); border-color:var(--border-normal)}
+.tab .x{color:var(--fg-disabled); font-size:11px}
+.tab .x:hover{color:var(--sev-error)}
+.tab .mod{width:5px;height:5px;border-radius:50%;background:var(--sev-warn)}
+.tab.add{color:var(--fg-disabled); padding:0 8px}
+
+#hexwrap{flex:1 1 auto; position:relative; min-height:0; overflow:hidden}
+#hex{display:block; position:absolute; inset:0; cursor:text}
+#hint{
+  flex:0 0 18px; height:18px; display:flex; align-items:center; padding:0 10px;
+  font-size:10px; color:var(--fg-disabled); font-family:var(--mono);
+  border-top:1px solid var(--border-sep); white-space:nowrap; overflow:hidden;
+}
+
+/* 自绘滚动条（不用原生 ScrollArea，见 05 §4.2） */
+#scrollbar{
+  position:absolute; top:0; right:0; bottom:0; width:14px;
+  background:var(--bg-raised); border-left:1px solid var(--border-sep);
+  cursor:default; z-index:5;
+}
+#thumb{
+  position:absolute; left:3px; right:3px; top:0; height:40px; border-radius:3px;
+  background:var(--bg-active); border:1px solid var(--border-normal);
+}
+#thumb:hover,#thumb.drag{background:var(--accent); border-color:var(--accent-2)}
+#dragtip{
+  position:absolute; right:20px; padding:5px 8px; display:none;
+  background:var(--bg-sunken); border:1px solid var(--border-focus);
+  border-radius:var(--radius); font-family:var(--mono); font-size:11px;
+  color:var(--fg-primary); white-space:nowrap; z-index:60;
+  box-shadow:0 6px 18px rgba(0,0,0,.5); pointer-events:none;
+}
+#dragtip .row2{color:var(--fg-secondary); margin-top:2px; font-size:10px}
+#dragtip .row3{color:var(--fg-disabled); margin-top:2px; font-size:10px}
+
+/* ============================================================
+   6. 右栏：Inspector + 图层
+   ============================================================ */
+.tabs2{flex:0 0 28px; display:flex; align-items:stretch; background:var(--bg-sunken); border-bottom:1px solid var(--border-normal)}
+.tabs2 .tab2{
+  padding:0 9px; font-size:11px; color:var(--fg-secondary);
+  border-bottom:2px solid transparent;
+}
+.tabs2 .tab2:hover{color:var(--fg-primary)}
+.tabs2 .tab2.active{color:var(--fg-primary); border-bottom-color:var(--accent)}
+.insp{padding:8px 10px; display:flex; flex-direction:column; gap:1px}
+.insp-placeholder{padding:10px 12px; font-size:12px; line-height:1.7; color:var(--fg-secondary)}
+.insp-row{display:flex; gap:10px; padding:3px 0; border-bottom:1px dashed var(--border-sep); font-size:12px}
+.insp-row .k{flex:0 0 62px; color:var(--fg-disabled)}
+.insp-row .v{flex:1 1 auto; font-family:var(--mono); color:var(--fg-primary); word-break:break-all}
+.insp-row .v.dim{color:var(--fg-secondary)}
+.layers{padding:2px 10px 8px; display:flex; flex-direction:column; gap:2px}
+.layer{display:flex; align-items:center; gap:8px; height:22px; font-size:12px; color:var(--fg-secondary)}
+.layer .sw{width:10px;height:10px;border-radius:2px;flex:0 0 10px}
+.layer .ck{width:11px;height:11px;border:1px solid var(--border-normal);border-radius:2px;background:var(--accent);flex:0 0 11px}
+.layer .nm2{flex:1 1 auto}
+.layer .z{font-family:var(--mono); font-size:10px; color:var(--fg-disabled)}
+
+/* ============================================================
+   7. 覆盖层：右键菜单 / 跳转对话框 / toast
+   ============================================================ */
+#ctxmenu{
+  position:fixed; display:none; min-width:186px; padding:4px; z-index:200;
+  background:var(--bg-raised); border:1px solid var(--border-normal);
+  border-radius:var(--radius); box-shadow:0 10px 30px rgba(0,0,0,.55);
+}
+#ctxmenu .item{
+  display:flex; align-items:center; gap:10px; width:100%; height:26px; padding:0 9px;
+  border-radius:var(--radius); font-size:12px; color:var(--fg-primary); text-align:left;
+}
+#ctxmenu .item:hover{background:var(--bg-active)}
+#ctxmenu .item .k{margin-left:auto; font-family:var(--mono); font-size:10px; color:var(--fg-disabled)}
+#ctxmenu .sep{height:1px;background:var(--border-sep);margin:4px 2px}
+
+#dialog{
+  position:fixed; inset:0; display:none; z-index:300;
+  background:rgba(11,13,16,.55);   /* 只用于遮罩，不参与高亮合成 */
+}
+#dialog.show{display:block}
+#dialog .box{
+  position:absolute; left:50%; top:22%; transform:translateX(-50%);
+  width:380px; padding:14px;
+  background:var(--bg-raised); border:1px solid var(--border-normal);
+  border-radius:var(--radius); box-shadow:0 18px 48px rgba(0,0,0,.6);
+}
+#dialog h3{margin:0 0 8px; font-size:12px; font-weight:600; color:var(--fg-primary)}
+#dialog p{margin:0 0 10px; font-size:11px; color:var(--fg-secondary); font-family:var(--mono)}
+#dlgInput{
+  width:100%; height:30px; padding:0 10px; border-radius:var(--radius);
+  background:var(--bg-sunken); border:1px solid var(--border-focus);
+  color:var(--fg-primary); font-family:var(--mono); font-size:13px; outline:none;
+}
+#dialog .acts{display:flex; gap:8px; justify-content:flex-end; margin-top:12px}
+#dialog .btn{height:26px; padding:0 12px; border-radius:var(--radius); border:1px solid var(--border-normal); color:var(--fg-secondary)}
+#dialog .btn.primary{background:var(--accent); border-color:var(--accent); color:var(--on-accent)}
+#dialog .err{margin-top:8px; font-size:11px; color:var(--sev-error); display:none}
+
+#toast{
+  position:fixed; left:50%; bottom:44px; transform:translateX(-50%) translateY(8px);
+  padding:7px 14px; border-radius:var(--radius); font-size:12px;
+  background:var(--bg-sunken); border:1px solid var(--border-normal);
+  color:var(--fg-primary); opacity:0; transition:opacity .16s ease, transform .16s ease;
+  pointer-events:none; z-index:400; max-width:70vw;
+}
+#toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+
+/* 高对比主题：强制 1px 实线、直角、去阴影（16 §4.8） */
+html[data-theme="hc"] .dropdown,
+html[data-theme="hc"] #ctxmenu,
+html[data-theme="hc"] #dialog .box{box-shadow:none; border-width:2px}
+html[data-theme="hc"] #dragtip{box-shadow:none; border-width:2px}
+html[data-theme="hc"] .tab.active{border-width:2px}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ===== 说明条（可关闭） ===== -->
+  <div id="notice">
+    <span>◆</span>
+    <span id="noticeText">Geode 视觉原型 · 这是 HTML mockup，不是真实应用</span>
+    <span class="grow"></span>
+    <button id="noticeClose" title="关闭 / close">✕</button>
+  </div>
+
+  <!-- ===== 菜单栏 28px ===== -->
+  <div id="menubar">
+    <!-- 菜单项由 JS 依据 i18n 表生成 -->
+    <div id="menus" style="display:flex"></div>
+    <div id="mb-right">
+      <span class="jobs"><span class="spin"></span><span id="mbJobs">2 个后台任务</span></span>
+    </div>
+  </div>
+
+  <!-- ===== 工具栏 36px ===== -->
+  <div id="toolbar">
+    <button class="tbtn" data-cmd="file.open"><span class="ic">▤</span><span data-i18n="tb.open">打开</span></button>
+    <button class="tbtn" data-cmd="file.save"><span class="ic">▼</span><span data-i18n="tb.save">保存</span></button>
+    <span class="vsep"></span>
+    <button class="tbtn" data-cmd="edit.undo"><span class="ic">↶</span><span data-i18n="tb.undo">撤销</span></button>
+    <button class="tbtn" data-cmd="edit.redo"><span class="ic">↷</span><span data-i18n="tb.redo">重做</span></button>
+    <span class="vsep"></span>
+    <button class="tbtn" data-cmd="search.find"><span class="ic">⌕</span><span data-i18n="tb.search">搜索</span></button>
+    <button class="tbtn" id="tbGoto"><span class="ic">→</span><span data-i18n="tb.goto">跳转</span></button>
+    <input id="gotoInput" spellcheck="false" placeholder="0x1A3C">
+    <span class="vsep"></span>
+    <select class="sel" id="selBpr" title="bytes per row">
+      <option value="8">8</option>
+      <option value="16" selected>16</option>
+      <option value="32">32</option>
+      <option value="64">64</option>
+    </select>
+    <select class="sel" id="selTheme"></select>
+    <select class="sel" id="selLang">
+      <option value="zh">中文</option>
+      <option value="en">English</option>
+    </select>
+    <span id="tb-right">
+      <span id="tbHint">16 B/行 · 268,435,456 行</span>
+    </span>
+  </div>
+
+  <!-- ===== 主区 ===== -->
+  <div id="main">
+
+    <!-- 左栏 260px：文档 + 结构树 -->
+    <aside id="left">
+      <div class="panel-hd"><span data-i18n="panel.docs">文档</span></div>
+      <div class="doclist list">
+        <div class="doc active"><span class="dot"></span>report.bin<span class="badge" data-i18n="doc.modified">已修改</span></div>
+        <div class="doc"><span class="dot"></span>disk.img<span class="badge ro" data-i18n="doc.readonly">只读</span></div>
+        <div class="doc"><span class="dot"></span>firmware.hex</div>
+      </div>
+      <div class="panel-hd"><span data-i18n="panel.structure">结构树</span><span class="hd-hint">PE64 · 0.94</span></div>
+      <div class="tree" id="tree">
+        <div class="node" data-start="0" data-len="8192" data-tw="1">
+          <span class="tw open">▾</span><span class="kind">◇</span><span class="nm">PE64</span><span class="cf hi">0.98</span>
+        </div>
+        <div class="kids">
+          <div class="node" data-start="0" data-len="64" data-tw="1" style="padding-left:14px">
+            <span class="tw open">▾</span><span class="kind">▪</span><span class="nm">DOS_HEADER</span><span class="cf hi">1.00</span>
+          </div>
+          <div class="kids">
+            <div class="node" data-start="0" data-len="2" style="padding-left:28px"><span class="tw"></span><span class="nm">e_magic</span><span class="cf">0x5A4D</span></div>
+            <div class="node" data-start="60" data-len="4" style="padding-left:28px"><span class="tw"></span><span class="nm">e_lfanew</span><span class="cf">0x80</span></div>
+          </div>
+          <div class="node" data-start="128" data-len="376" data-tw="1" style="padding-left:14px">
+            <span class="tw">▸</span><span class="kind">▪</span><span class="nm">PE_HEADER</span><span class="cf mid">0.97</span>
+          </div>
+          <div class="node" data-start="512" data-len="256" style="padding-left:14px">
+            <span class="tw"></span><span class="kind">▪</span><span class="nm">strtab</span><span class="cf mid">0.71</span>
+          </div>
+          <div class="node" data-start="4096" data-len="2048" style="padding-left:14px">
+            <span class="tw"></span><span class="kind">▪</span><span class="nm">zip_dir</span><span class="cf">0.30 ?</span>
+          </div>
+          <div class="node" data-start="6704" data-len="68" style="padding-left:14px">
+            <span class="tw"></span><span class="kind">▪</span><span class="nm">ZipArchive</span><span class="cf mid">0.62</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <div class="splitter" data-side="left"></div>
+
+    <!-- 中栏：标签页 + hex 视图 -->
+    <section id="center">
+      <div id="tabs">
+        <div class="tab active"><span class="mod"></span>report.bin<span class="x">✕</span></div>
+        <div class="tab">disk.img<span class="x">✕</span></div>
+        <div class="tab add">+</div>
+      </div>
+      <div id="hexwrap">
+        <canvas id="hex"></canvas>
+        <div id="scrollbar"><div id="thumb"></div></div>
+        <div id="dragtip"></div>
+      </div>
+      <div id="hint">滚轮滚动 · 点击选中 · 拖动选范围 · Ctrl+G 跳转 · 右键菜单</div>
+    </section>
+
+    <div class="splitter" data-side="right"></div>
+
+    <!-- 右栏 320px：Inspector -->
+    <aside id="right">
+      <div class="tabs2">
+        <button class="tab2 active" data-i18n="insp.tab0">检查器</button>
+        <button class="tab2" data-i18n="insp.tab1">分析</button>
+        <button class="tab2" data-i18n="insp.tab2">反汇编</button>
+        <button class="tab2" data-i18n="insp.tab3">YARA</button>
+        <button class="tab2" data-i18n="insp.tab4">可视化</button>
+      </div>
+      <div class="panel-hd"><span data-i18n="panel.inspector">检查器</span><span class="hd-hint" id="inspPath">PE64</span></div>
+      <div class="insp">
+        <div class="insp-row"><span class="k" data-i18n="insp.offset">偏移</span><span class="v" id="i-off">0x00001A3C</span></div>
+        <div class="insp-row"><span class="k" data-i18n="insp.len">长度</span><span class="v dim" id="i-len">4 B</span></div>
+        <div class="insp-row"><span class="k" data-i18n="insp.type">类型</span><span class="v dim" id="i-type">u32le</span></div>
+        <div class="insp-row"><span class="k" data-i18n="insp.value">值</span><span class="v" id="i-val">0x00000000</span></div>
+        <div class="insp-row"><span class="k" data-i18n="insp.hint">解释</span><span class="v dim" id="i-hint">—</span></div>
+      </div>
+      <div class="insp-placeholder" id="inspAlt" hidden><span data-i18n="insp.alt">占位</span></div>
+      <div class="panel-hd"><span data-i18n="panel.layers">图层（z 序固定）</span></div>
+      <div class="layers" id="layers"></div>
+    </aside>
+  </div>
+
+  <!-- ===== 状态栏 24px ===== -->
+  <div id="statusbar">
+    <div class="cell"><span class="k" data-i18n="st.offset">偏移</span><span class="v off" id="st-offset">0x00001A3C</span></div>
+    <div class="cell"><span class="k" data-i18n="st.selection">选区</span><span class="v" id="st-sel">256 B</span></div>
+    <div class="cell"><span class="k" data-i18n="st.encoding">编码</span><span class="v" id="st-enc">Latin-1</span></div>
+    <div class="cell"><span class="v" id="st-endian">LE</span></div>
+    <div class="cell"><span class="k" data-i18n="st.size">大小</span><span class="v" id="st-size">4.00 GiB</span></div>
+    <div class="cell"><span class="k" data-i18n="st.patches">补丁</span><span class="v warn" id="st-patch">1</span></div>
+    <div class="cell"><span class="k" data-i18n="st.jobs">后台任务</span><span class="v" id="st-jobs">2</span></div>
+    <div class="cell grow"><span class="bar"><i id="st-bar"></i></span><span class="v dim" id="st-pct">43%</span></div>
+    <div class="cell"><span class="v dim">0.9.2-mock</span></div>
+  </div>
+</div>
+
+<!-- ===== 覆盖层 ===== -->
+<div id="ctxmenu"></div>
+
+<div id="dialog">
+  <div class="box">
+    <h3 id="dlgTitle">跳转到偏移</h3>
+    <p id="dlgHint">输入十六进制偏移，例如 0x1A3C</p>
+    <input id="dlgInput" spellcheck="false" placeholder="0x1A3C">
+    <div class="err" id="dlgErr">无效偏移</div>
+    <div class="acts">
+      <button class="btn" id="dlgCancel">取消</button>
+      <button class="btn primary" id="dlgOk">跳转</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+'use strict';
+(function () {
+/* ================================================================
+   0. 小工具
+   ================================================================ */
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
+const hex2 = (n) => n.toString(16).toUpperCase().padStart(2, '0');
+const hex8 = (n) => (n >>> 0).toString(16).toUpperCase().padStart(8, '0');
+
+/** 字节长度的人类可读形式 */
+function fmtSize(n) {
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + ' KiB';
+  if (n < 1073741824) return (n / 1048576).toFixed(1) + ' MiB';
+  return (n / 1073741824).toFixed(2) + ' GiB';
+}
+/** 两个 #rrggbb 之间做实色插值。**只用实色，不产生 alpha 叠加新色相**（05 §4.7）。 */
+function mix(c1, c2, t) {
+  const p = (c) => [1, 3, 5].map((i) => parseInt(c.substr(i, 2), 16));
+  const a = p(c1), b = p(c2);
+  const o = a.map((v, i) => Math.round(v + (b[i] - v) * clamp(t, 0, 1)));
+  return '#' + o.map((v) => v.toString(16).padStart(2, '0')).join('');
+}
+
+/* ================================================================
+   1. i18n（zh / en）—— 与 16 §3.5 key 规范同构的扁平表
+   ================================================================ */
+const STR = {
+  zh: {
+    'notice': 'Geode 视觉原型 · 这是 HTML mockup，不是真实应用',
+    'menubar.file': '文件', 'menubar.edit': '编辑', 'menubar.view': '视图',
+    'menubar.search': '搜索', 'menubar.nav': '导航', 'menubar.tools': '工具', 'menubar.help': '帮助',
+    'menu.file.new': '新建文档', 'menu.file.open': '打开文件…', 'menu.file.save': '保存',
+    'menu.file.saveas': '另存为…', 'menu.file.close': '关闭标签',
+    'menu.edit.undo': '撤销', 'menu.edit.redo': '重做', 'menu.edit.copy': '复制为 hex',
+    'menu.edit.selectall': '全选',
+    'menu.view.theme': '切换主题', 'menu.view.left': '显示左栏', 'menu.view.right': '显示右栏',
+    'menu.view.zoom': '重置缩放',
+    'menu.search.find': '查找…', 'menu.search.next': '下一个',
+    'menu.nav.goto': '跳转到偏移…', 'menu.nav.home': '文件头', 'menu.nav.end': '文件尾',
+    'menu.tools.diff': '与…对比', 'menu.tools.yara': 'YARA 扫描', 'menu.tools.ai': 'AI 猜结构',
+    'menu.help.about': '关于 Geode',
+    'tb.open': '打开', 'tb.save': '保存', 'tb.undo': '撤销', 'tb.redo': '重做',
+    'tb.search': '搜索', 'tb.goto': '跳转',
+    'panel.docs': '文档', 'panel.structure': '结构树', 'panel.inspector': '检查器',
+    'panel.layers': '图层（z 序固定）',
+    'doc.modified': '已修改', 'doc.readonly': '只读',
+    'insp.tab0': '检查器', 'insp.tab1': '分析', 'insp.tab2': '反汇编', 'insp.tab3': 'YARA', 'insp.tab4': '可视化',
+    'insp.offset': '偏移', 'insp.len': '长度', 'insp.type': '类型', 'insp.value': '值', 'insp.hint': '解释',
+    'insp.alt': '该面板在 mockup 中仅作占位（真实实现里是分析 / 反汇编 / YARA / 可视化视图）',
+    'toast.newtab': '新建标签（mockup 不创建真实文档）',
+    'toast.sameData': '已切换到 {name}（mockup 三个标签共用同一虚拟字节源）',
+    'st.offset': '偏移', 'st.selection': '选区', 'st.encoding': '编码', 'st.size': '大小',
+    'st.patches': '补丁', 'st.jobs': '后台任务',
+    'ctx.copyhex': '复制为 hex', 'ctx.copyarr': '复制为数组', 'ctx.goto': '跳到偏移', 'ctx.bookmark': '添加书签',
+    'goto.title': '跳转到偏移', 'goto.hint': '输入十六进制偏移，例如 0x1A3C', 'goto.invalid': '无效偏移',
+    'goto.bad': '那不是合法偏移（只接受 0-9 A-F）',
+    'toast.copied': '已复制 {n} 字节',
+    'toast.copied.trunc': '已复制前 {n} 字节（mockup 上限 4096 B）',
+    'toast.bookmark': '已添加书签 @ {off}',
+    'toast.mock': '命令「{cmd}」在 mockup 中未实现',
+    'toast.moved': '已跳转到 {off}',
+  },
+  en: {
+    'notice': 'Geode visual prototype · this is an HTML mockup, not the real app',
+    'menubar.file': 'File', 'menubar.edit': 'Edit', 'menubar.view': 'View',
+    'menubar.search': 'Search', 'menubar.nav': 'Nav', 'menubar.tools': 'Tools', 'menubar.help': 'Help',
+    'menu.file.new': 'New document', 'menu.file.open': 'Open file…', 'menu.file.save': 'Save',
+    'menu.file.saveas': 'Save as…', 'menu.file.close': 'Close tab',
+    'menu.edit.undo': 'Undo', 'menu.edit.redo': 'Redo', 'menu.edit.copy': 'Copy as hex',
+    'menu.edit.selectall': 'Select all',
+    'menu.view.theme': 'Cycle theme', 'menu.view.left': 'Toggle left panel', 'menu.view.right': 'Toggle right panel',
+    'menu.view.zoom': 'Reset zoom',
+    'menu.search.find': 'Find…', 'menu.search.next': 'Find next',
+    'menu.nav.goto': 'Go to offset…', 'menu.nav.home': 'File start', 'menu.nav.end': 'File end',
+    'menu.tools.diff': 'Compare with…', 'menu.tools.yara': 'YARA scan', 'menu.tools.ai': 'AI structure guess',
+    'menu.help.about': 'About Geode',
+    'tb.open': 'Open', 'tb.save': 'Save', 'tb.undo': 'Undo', 'tb.redo': 'Redo',
+    'tb.search': 'Find', 'tb.goto': 'Goto',
+    'panel.docs': 'Documents', 'panel.structure': 'Structure', 'panel.inspector': 'Inspector',
+    'panel.layers': 'Layers (fixed z-order)',
+    'doc.modified': 'modified', 'doc.readonly': 'read-only',
+    'insp.tab0': 'Inspector', 'insp.tab1': 'Analysis', 'insp.tab2': 'Disasm', 'insp.tab3': 'YARA', 'insp.tab4': 'Visual',
+    'insp.offset': 'Offset', 'insp.len': 'Length', 'insp.type': 'Type', 'insp.value': 'Value', 'insp.hint': 'Notes',
+    'insp.alt': 'Placeholder only in the mockup (real app: analysis / disasm / YARA / visual)',
+    'toast.newtab': 'New tab (mockup creates no real document)',
+    'toast.sameData': 'Switched to {name} (mockup tabs share one virtual byte source)',
+    'st.offset': 'Offset', 'st.selection': 'Selection', 'st.encoding': 'Encoding', 'st.size': 'Size',
+    'st.patches': 'Patches', 'st.jobs': 'Jobs',
+    'ctx.copyhex': 'Copy as hex', 'ctx.copyarr': 'Copy as array', 'ctx.goto': 'Go to offset', 'ctx.bookmark': 'Add bookmark',
+    'goto.title': 'Go to offset', 'goto.hint': 'Hex offset, e.g. 0x1A3C', 'goto.invalid': 'Invalid offset',
+    'goto.bad': 'Not a valid offset (0-9 A-F only)',
+    'toast.copied': 'Copied {n} bytes',
+    'toast.copied.trunc': 'Copied first {n} bytes (mockup cap 4096 B)',
+    'toast.bookmark': 'Bookmark added @ {off}',
+    'toast.mock': 'Command "{cmd}" is not implemented in the mockup',
+    'toast.moved': 'Jumped to {off}',
+  },
+};
+let lang = 'zh';
+function t(key, vars) {
+  let s = (STR[lang] && STR[lang][key]) || (STR.zh[key] || key);
+  if (vars) for (const k in vars) s = s.split('{' + k + '}').join(vars[k]);
+  return s;
+}
+/** 把 data-i18n 标注的节点重刷一遍文案（运行时切语言无需重启，16 §4.6） */
+function applyI18n() {
+  document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
+  document.querySelectorAll('[data-i18n]').forEach((el) => {
+    el.textContent = t(el.getAttribute('data-i18n'));
+  });
+  $('noticeText').textContent = t('notice');
+  $('mbJobs').textContent = lang === 'zh' ? '2 个后台任务' : '2 background jobs';
+  $('hint').textContent = lang === 'zh'
+    ? '滚轮滚动 · 点击选中 · 拖动选范围 · Ctrl+G 跳转 · 右键菜单'
+    : 'wheel to scroll · click to select · drag to range · Ctrl+G to goto · right-click menu';
+  buildMenus();
+  buildLayers();
+  buildThemeOptions();
+  updateToolbarHint();
+  updateStatus();
+}
+
+/* ================================================================
+   2. 主题（16 §4.5 的 token；light / high-contrast 为自配）
+   ================================================================ */
+const THEMES = {
+  dark: {
+    label: { zh: '深色', en: 'Dark' },
+    '--bg-base': '#0b0d10', '--bg-raised': '#14181d', '--bg-sunken': '#1c2229',
+    '--bg-hover': '#1c2229', '--bg-active': '#2a323b',
+    '--border-normal': '#2a323b', '--border-sep': '#1c2229', '--border-focus': '#60a5fa',
+    '--fg-primary': '#e6ebf2', '--fg-secondary': '#9aa4b1', '--fg-disabled': '#5a6472',
+    '--on-accent': '#0b0d10',
+    '--accent': '#3b82f6', '--accent-2': '#60a5fa', '--selection': '#3b82f6',
+    '--hex-offset': '#9aa4b1', '--hex-ascii': '#e6ebf2',
+    '--hex-nonprint': '#6b7684', '--hex-null': '#2a323b',
+    '--patch-ins-bg': '#12351f', '--patch-ins-fg': '#22c55e',
+    '--patch-del-bg': '#3a1416', '--patch-del-fg': '#ef4444',
+    '--l-search': '#facc15', '--l-structure': '#22d3ee', '--l-bookmark': '#a78bfa',
+    '--l-cursor': '#ffffff', '--l-value': '#e6ebf2',
+    '--sev-warn': '#f59e0b', '--sev-error': '#ef4444', '--ok': '#22c55e',
+    '--warn-soft': '#3a2f0b', '--radius': '4px',
+  },
+  light: {
+    label: { zh: '浅色', en: 'Light' },
+    '--bg-base': '#ffffff', '--bg-raised': '#f4f6f9', '--bg-sunken': '#e8ecf1',
+    '--bg-hover': '#eef1f5', '--bg-active': '#dde3ea',
+    '--border-normal': '#c7d0da', '--border-sep': '#e2e8ef', '--border-focus': '#2563eb',
+    '--fg-primary': '#10161d', '--fg-secondary': '#55606d', '--fg-disabled': '#98a2ad',
+    '--on-accent': '#ffffff',
+    '--accent': '#2563eb', '--accent-2': '#1d4ed8', '--selection': '#2563eb',
+    '--hex-offset': '#55606d', '--hex-ascii': '#10161d',
+    '--hex-nonprint': '#6b7684', '--hex-null': '#c7d0da',
+    '--patch-ins-bg': '#d7f5e1', '--patch-ins-fg': '#15803d',
+    '--patch-del-bg': '#fbdada', '--patch-del-fg': '#b91c1c',
+    '--l-search': '#a16207', '--l-structure': '#0e7490', '--l-bookmark': '#7c3aed',
+    '--l-cursor': '#0b0d10', '--l-value': '#10161d',
+    '--sev-warn': '#b45309', '--sev-error': '#b91c1c', '--ok': '#15803d',
+    '--warn-soft': '#fdf3d7', '--radius': '4px',
+  },
+  hc: {
+    label: { zh: '高对比', en: 'High contrast' },
+    '--bg-base': '#000000', '--bg-raised': '#000000', '--bg-sunken': '#101010',
+    '--bg-hover': '#1e1e1e', '--bg-active': '#333300',
+    '--border-normal': '#ffff00', '--border-sep': '#8a8a00', '--border-focus': '#00ffff',
+    '--fg-primary': '#ffff00', '--fg-secondary': '#ffff00', '--fg-disabled': '#b8b800',
+    '--on-accent': '#000000',
+    '--accent': '#00ffff', '--accent-2': '#00ffff', '--selection': '#ffff00',
+    '--hex-offset': '#00ffff', '--hex-ascii': '#ffff00',
+    '--hex-nonprint': '#bcbc00', '--hex-null': '#8a8a00',
+    '--patch-ins-bg': '#003300', '--patch-ins-fg': '#00ff00',
+    '--patch-del-bg': '#330000', '--patch-del-fg': '#ff5555',
+    '--l-search': '#ff8c00', '--l-structure': '#00ffff', '--l-bookmark': '#ff00ff',
+    '--l-cursor': '#ffffff', '--l-value': '#ffff00',
+    '--sev-warn': '#ff8c00', '--sev-error': '#ff5555', '--ok': '#00ff00',
+    '--warn-soft': '#1a1a00', '--radius': '0px',
+  },
+};
+let themeId = 'dark';
+let T = THEMES.dark;
+/** 取主题色（canvas 与 CSS 共用同一份 token） */
+const C = (k) => T[k] || '#ff00ff';
+
+function applyTheme(id) {
+  themeId = id;
+  T = THEMES[id] || THEMES.dark;
+  const root = document.documentElement;
+  for (const k in T) if (k.startsWith('--')) root.style.setProperty(k, T[k]);
+  root.setAttribute('data-theme', id);
+  $('selTheme').value = id;
+  M.font = fontString2(M.fontPx);
+  requestDraw();
+}
+function buildThemeOptions() {
+  const sel = $('selTheme');
+  sel.innerHTML = '';
+  for (const id in THEMES) {
+    const o = document.createElement('option');
+    o.value = id;
+    o.textContent = THEMES[id].label[lang];
+    sel.appendChild(o);
+  }
+  sel.value = themeId;
+}
+
+/* ================================================================
+   3. 虚拟字节源：4 GiB 全虚拟，绝不为 4GB 分配内存
+      —— 以偏移为种子的哈希 + 若干可识别图案段
+   ================================================================ */
+const TOTAL = 4 * 1024 * 1024 * 1024;          // 4 GiB
+const TOTAL_ROWS_BY_BPR = () => Math.ceil(TOTAL / state.bpr);
+
+/** 32 位整数哈希（xorshift 风格 finalizer），同一偏移恒得同一字节 */
+function rand8(off) {
+  let x = (off ^ 0x9e3779b9) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x7feb352d) >>> 0;
+  x = Math.imul(x ^ (x >>> 15), 0x846ca68b) >>> 0;
+  return ((x ^ (x >>> 16)) >>> 0) & 0xff;
+}
+
+/* 图案段：让画面里出现"认得出"的结构，而不是一片噪声 */
+const MZ = [0x4d,0x5a,0x90,0x00,0x03,0x00,0x00,0x00,0x04,0x00,0x00,0x00,0xff,0xff,0x00,0x00,
+            0xb8,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x40,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
+            0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x80,0x00,0x00,0x00];
+const PEH = [0x50,0x45,0x00,0x00,0x4c,0x01,0x03,0x00,0x5d,0x1f,0x2b,0x6e,0x00,0x00,0x00,0x00,
+             0x00,0x00,0x00,0x00,0xe0,0x00,0x2e,0x02,0x0b,0x01,0x02,0x1e,0x00,0x0e,0x00,0x00];
+const STRTAB = 'Geode visual prototype. 4D 5A 90 00 pattern lives right here. Not a real file. ';
+
+const SEGMENTS = [
+  { start: 0x0000, len: MZ.length, kind: 'arr', arr: MZ },
+  { start: 0x0080, len: PEH.length, kind: 'arr', arr: PEH },
+  { start: 0x0200, len: 0x0100, kind: 'text' },
+  { start: 0x1000, len: 0x0800, kind: 'zero' },
+  { start: 0x1a30, len: 0x0010, kind: 'arr', arr: [0x50,0x4b,0x03,0x04,0x14,0x00,0x00,0x00,
+                                                    0x08,0x00,0x21,0x00,0x1a,0x3c,0x00,0x00] },
+];
+
+/** 返回 off 处的字节；越界返回 -1（该格不渲染、不参与命中测试） */
+function byteAt(off) {
+  if (off < 0 || off >= TOTAL) return -1;
+  for (let i = 0; i < SEGMENTS.length; i++) {
+    const s = SEGMENTS[i];
+    if (off >= s.start && off < s.start + s.len) {
+      if (s.kind === 'arr') return s.arr[off - s.start];
+      if (s.kind === 'zero') return 0x00;
+      return STRTAB.charCodeAt((off - s.start) % STRTAB.length);
+    }
+  }
+  // 每 8 个 128 B 块插入一段零区，制造真实二进制里常见的"填充/对齐"
+  if (((off >>> 7) & 7) === 0) return 0x00;
+  return rand8(off);
+}
+
+/* ================================================================
+   4. 标注层（图层数据）：结构 / 搜索命中 / 书签 / 补丁
+      注意：搜索命中是 mockup 的静态标注，不是真搜索（见交付说明）
+   ================================================================ */
+const STRUCTS = [
+  { start: 0x0000, len: 0x0040, name: 'DOS_HEADER', depth: 1 },
+  { start: 0x0080, len: 0x0178, name: 'PE_HEADER',  depth: 1 },
+  { start: 0x0200, len: 0x0100, name: 'strtab',     depth: 1 },
+  { start: 0x1000, len: 0x0800, name: 'zip_dir',    depth: 1 },
+  { start: 0x1a30, len: 0x0044, name: 'ZipArchive', depth: 1 },
+];
+const SEARCH_HITS = [                     // {start, len}，演示用
+  { start: 0x0000, len: 2 }, { start: 0x0210, len: 2 },
+  { start: 0x1a30, len: 2 }, { start: 0x1a3c, len: 2 },
+];
+let BOOKMARKS = [0x1a34, 0x1a48];
+// 模拟补丁：与 25 §4.2 线框 1 的“补丁 12”对齐（若干插入 + 覆盖）
+const PATCHES = [
+  { start: 0x1a44, len: 1 }, { start: 0x1a50, len: 1 }, { start: 0x1a58, len: 2 },
+  { start: 0x1a70, len: 1 }, { start: 0x1a9c, len: 3 }, { start: 0x1ac0, len: 1 },
+  { start: 0x1b08, len: 1 }, { start: 0x1b30, len: 2 }, { start: 0x1b58, len: 1 },
+  { start: 0x1b90, len: 1 }, { start: 0x1bc4, len: 2 }, { start: 0x1bf0, len: 1 },
+];
+
+/** 判断 off 是否落在某个标注区间内（线性扫描，标注量极小） */
+function inRanges(list, off) {
+  for (let i = 0; i < list.length; i++) {
+    const r = list[i];
+    if (off >= r.start && off < r.start + r.len) return r;
+  }
+  return null;
+}
+/** 最深结构节点（命中 Compound 用；05 §4.8） */
+function deepestAt(off) {
+  let best = null;
+  for (const s of STRUCTS) {
+    if (off >= s.start && off < s.start + s.len) {
+      if (!best || s.len < best.len) best = s;
+    }
+  }
+  return best;
+}
+
+/* ================================================================
+   5. 视图状态（ScrollPos / Cursor / Selection，05 §3.1、§4.2、§4.5）
+   ================================================================ */
+const state = {
+  bprReq: 16,                    // 用户选择的每行字节数（配置值）
+  bpr: 16,                       // 实际生效值：窗口过窄时运行时下调（05 §3.3）
+  scrollRow: 0x1a0,              // 顶行的行号（u64 语义，这里用 Number，行数 < 2^53）
+  cursor: { off: 0x1a3c, nib: 0 }, // nib: 0=高 4 位, 1=低 4 位, 2=整个字节（ASCII 列）
+  sel: { anchor: 0x1a3c, head: 0x1b3b },  // 256 B 选区（首尾含）
+  hoverRow: -1,
+  dragging: false,
+  dragAuto: 0,
+  flashT0: -1,                   // 跳转后高亮闪一下
+};
+function selRange() {
+  const { anchor, head } = state.sel;
+  return anchor <= head ? [anchor, head + 1] : [head, anchor + 1];
+}
+
+/* ================================================================
+   6. 画布与布局度量（05 §3.2 的 Layout，纯函数式每帧重算）
+   ================================================================ */
+const canvas = $('hex');
+const ctx = canvas.getContext('2d', { alpha: false });
+const SB_W = 14;                 // 自绘滚动条宽度
+
+const M = {
+  w: 0, h: 0, dpr: 1,
+  rowH: 20, fontPx: 13, cellW: 8,
+  byteGapChars: 1,               // 字节之间一个空格字符宽（等宽字体天然对齐）
+  groupGap: 8,                   // 每 8 字节一组的组间空隙
+  offPad: 10, offW: 0, hexX: 0, asciiX: 0,
+  ascii: true, viewRows: 0,
+  font: '',
+};
+
+function fontString2(px) {
+  return px + 'px "SF Mono", Menlo, Consolas, ui-monospace, monospace';
+}
+
+/** 重新测量并按可用宽度自适应（列宽一律 x = base + n*cell_w 乘算，05 §4.3） */
+/** 计算一套列宽/字号：先保 ASCII 列，放不下就折叠；再不济等比缩字号（05 §3.3） */
+function computeLayout(w) {
+  // 用实际字形度量 cell 宽，禁止 size*0.6 这类假设（16 §3.6）
+  const measure = (px) => {
+    ctx.font = fontString2(px);
+    const adv = ctx.measureText('0').width;
+    return Math.round(adv * 100) / 100 || px * 0.6;
+  };
+  const gapTotal = (Math.ceil(state.bpr / 8) - 1) * M.groupGap;
+  let fontPx = 13, cellW = measure(13), ascii = true;
+  // 每个字节 = 2 字符 + 1 个空格字符；行末不留空格
+  const hexW = () => state.bpr * 3 * cellW - cellW + gapTotal;
+  let offW = 0, avail = 0;
+  for (let iter = 0; iter < 5; iter++) {
+    offW = Math.round(8 * cellW + M.offPad * 2);
+    avail = w - offW - 8 - (ascii ? state.bpr * cellW + 16 : 0) - 6;
+    if (hexW() <= avail) break;
+    if (ascii) { ascii = false; continue; }        // ① 先折叠 ASCII 列（25 §4.2 线框 2）
+    // ② 再等比缩小字号：向下取 0.1 步进，保证每轮严格变小（否则会卡在差几像素的死循环）
+    const ratio = avail / hexW();
+    const next = Math.min(fontPx * ratio, fontPx - 0.1);
+    fontPx = Math.max(8, Math.floor(next * 10) / 10);
+    cellW = measure(fontPx);
+  }
+  return { fontPx: fontPx, cellW: cellW, offW: offW, ascii: ascii, fits: hexW() <= avail, hexW: hexW() };
+}
+
+function relayout() {
+  const wrap = $('hexwrap');
+  const w = Math.max(120, wrap.clientWidth - SB_W);
+  const h = Math.max(40, wrap.clientHeight);
+  const dpr = window.devicePixelRatio || 1;
+
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+  M.dpr = dpr; M.w = w; M.h = h;
+  M.rowH = 20;
+
+  // 宽度不足时按 05 §3.3「运行时下调 bytes_per_row」——不写回用户的选择
+  state.bpr = state.bprReq;
+  let L = computeLayout(w);
+  let guard = 0;
+  while (!L.fits && state.bpr > 8 && guard++ < 3) {
+    state.bpr = state.bpr / 2;
+    L = computeLayout(w);
+  }
+
+  M.fontPx = L.fontPx;
+  M.cellW = L.cellW;
+  M.font = fontString2(L.fontPx);
+  M.offW = L.offW;
+  M.hexX = L.offW + 8;                  // 偏移列与 hex 列之间固定 8px 呼吸位
+  M.ascii = L.ascii;
+  M.asciiX = Math.round(M.hexX + L.hexW + 16);
+  M.viewRows = Math.max(1, Math.floor(h / M.rowH));
+
+  clampScroll();
+  updateThumb();
+  updateToolbarHint();
+  // 同步画一帧：首帧不等 rAF（也避免窗口 resize 时闪黑）
+  if (M.w > 0 && M.h > 0) draw();
+}
+
+/** 第 c 字节的左边缘（乘算，绝不累加，避免漂移） */
+function byteX(c) {
+  return M.hexX + c * 3 * M.cellW + Math.floor(c / 8) * M.groupGap;
+}
+function asciiX(c) {
+  return M.asciiX + c * M.cellW;
+}
+
+/* ================================================================
+   7. 绘制（canvas 自绘；每次重绘只画可见行，见 05 §4.3 的预算）
+   ================================================================ */
+/* 重绘调度：合并同一帧内的多次请求（滚动/选区/主题都走这里） */
+let dirty = false;
+function requestDraw() {
+  if (dirty) return;
+  dirty = true;
+  requestAnimationFrame(() => { dirty = false; draw(); });
+}
+
+function draw() {
+  const w = M.w, h = M.h;
+  ctx.fillStyle = C('--bg-base');
+  ctx.fillRect(0, 0, w, h);
+  if (!M.viewRows) return;
+
+  const bpr = state.bpr;
+  const rowH = M.rowH;
+  const [selA, selB] = selRange();
+  const curOff = state.cursor.off, curNib = state.cursor.nib;
+  const flash = state.flashT0 >= 0 ? clamp(1 - (performance.now() - state.flashT0) / 520, 0, 1) : 0;
+  if (flash <= 0 && state.flashT0 >= 0) state.flashT0 = -1;
+
+  ctx.font = M.font;
+  ctx.textBaseline = 'alphabetic';
+  const baseline = Math.round(rowH * 0.5 + M.fontPx * 0.36);
+
+  const rowBytes = new Uint8Array(64);
+  const totalRows = Math.ceil(TOTAL / bpr);
+
+  for (let i = 0; i < M.viewRows; i++) {
+    const row = state.scrollRow + i;
+    if (row >= totalRows) break;
+    const rowOff = row * bpr;
+    const y = i * rowH;
+
+    if (row === state.hoverRow) {
+      ctx.fillStyle = C('--bg-raised');
+      ctx.fillRect(0, y, w, rowH);
+    }
+
+    for (let c = 0; c < bpr; c++) rowBytes[c] = byteAt(rowOff + c);
+
+    /* ---- ① 底色层：补丁 / 选区（不透明实色，不做 alpha 叠加） ---- */
+    for (const p of PATCHES) fillRangeBg(p.start, p.start + p.len, rowOff, bpr, y, C('--patch-ins-bg'));
+    fillRangeBg(selA, selB, rowOff, bpr, y, C('--selection'));
+    if (M.ascii) {   // ASCII 列是另一套 x 几何，底色单独铺一次
+      for (const p of PATCHES) fillRangeBgAscii(p.start, p.start + p.len, rowOff, bpr, y, C('--patch-ins-bg'));
+      fillRangeBgAscii(selA, selB, rowOff, bpr, y, C('--selection'));
+    }
+
+    /* ---- ② 偏移列 ---- */
+    ctx.fillStyle = C('--hex-offset');
+    ctx.fillText(hex8(rowOff), M.offPad, y + baseline);
+
+    /* ---- ③ hex 列：同色 run 合并后一次 fillText {~2-4 次/行} ---- */
+    drawRuns(bpr, (c) => hexFg(rowOff + c, rowBytes[c], selA, selB),
+      (a, b) => {
+        let s = '';
+        for (let k = a; k < b; k++) s += (k > a ? ' ' : '') + hex2(rowBytes[k]);
+        return s;
+      },
+      (c) => byteX(c), y + baseline, /* 组边界强制断 run */ 8);
+
+    /* ---- ④ ASCII 列 ---- */
+    if (M.ascii) {
+      ctx.fillStyle = C('--border-normal');
+      ctx.fillRect(M.asciiX - 9, y, 1, rowH);
+      drawRuns(bpr, (c) => asciiFg(rowOff + c, rowBytes[c], selA, selB),
+        (a, b) => {
+          let s = '';
+          for (let k = a; k < b; k++) s += asciiChar(rowBytes[k]);
+          return s;
+        },
+        (c) => asciiX(c), y + baseline, 999);
+    }
+
+    /* ---- ⑤ 装饰层：搜索下划线 / 结构左带+底线 / 书签左带 ---- */
+    for (let c = 0; c < bpr; c++) {
+      const off = rowOff + c;
+      if (inRanges(SEARCH_HITS, off)) {
+        ctx.fillStyle = C('--l-search');
+        ctx.fillRect(byteX(c), y + rowH - 2, 2 * M.cellW, 1.5);
+      }
+    }
+    for (const s of STRUCTS) {
+      const a = Math.max(s.start, rowOff), b = Math.min(s.start + s.len, rowOff + bpr);
+      if (a >= b) continue;
+      ctx.fillStyle = C('--l-structure');
+      // 行底 1px 色带 + 结构起点左缘 3px 竖条（05 §4.8）
+      ctx.fillRect(byteX(a - rowOff), y + rowH - 2, byteX(b - rowOff - 1) + 2 * M.cellW - byteX(a - rowOff), 1.5);
+      if (s.start >= rowOff && s.start < rowOff + bpr) {
+        ctx.fillRect(M.hexX - 6, y, 3, rowH);
+      }
+    }
+    for (const bm of BOOKMARKS) {
+      if (bm >= rowOff && bm < rowOff + bpr) {
+        ctx.fillStyle = C('--l-bookmark');
+        ctx.fillRect(M.hexX - 6, y + 3, 3, rowH - 6);
+      }
+    }
+
+    /* ---- ⑥ 光标：当前 nibble 底色 + 字节空心框（05 §4.5 双通道） ---- */
+    if (curOff >= rowOff && curOff < rowOff + bpr) {
+      const c = curOff - rowOff;
+      const x = byteX(c);
+      const fg = hexFg(curOff, rowBytes[c], selA, selB);
+      const bg = bgFor(curOff, selA, selB);
+      // nibble 高亮：底色块（实色混合，不叠加半透明）
+      const hiW = curNib === 2 ? 2 * M.cellW : M.cellW;
+      const hiX = curNib === 1 ? x + M.cellW : x;
+      ctx.fillStyle = mix(bg, C('--accent-2'), 0.55);
+      ctx.fillRect(hiX, y + 2, hiW, rowH - 4);
+      // 重画该字节（另一 nibble 降亮度，用实色表达"降亮度"而非 alpha）
+      const dimFg = mix(fg, bg, 0.55);
+      ctx.fillStyle = curNib === 1 ? dimFg : fg;
+      ctx.fillText(hex2(rowBytes[c])[0], x, y + baseline);
+      ctx.fillStyle = curNib === 0 ? dimFg : fg;
+      ctx.fillText(hex2(rowBytes[c])[1], x + M.cellW, y + baseline);
+      // 空心框（hex 列）
+      ctx.strokeStyle = C('--l-cursor');
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x - 0.5, y + 1.5, 2 * M.cellW + 1, rowH - 3);
+      // ASCII 列的光标：整字节框（ASCII 没有 nibble 概念）
+      if (M.ascii) {
+        const ax = asciiX(c);
+        ctx.strokeStyle = C('--l-cursor');
+        ctx.strokeRect(ax - 0.5, y + 1.5, M.cellW + 1, rowH - 3);
+      }
+
+      // 跳转后的闪烁：实色插值，不用 globalAlpha
+      if (flash > 0) {
+        ctx.fillStyle = mix(C('--bg-base'), C('--accent-2'), 0.35 * flash);
+        ctx.fillRect(x - 1, y, 2 * M.cellW + 2, rowH);
+      }
+    }
+  }
+
+  // 右侧留白边界（视觉上把 hex 区和滚动条分开）
+  ctx.fillStyle = C('--border-sep');
+  ctx.fillRect(w - 1, 0, 1, h);
+}
+
+/** 同色 run 合并绘制：把连续的相同前景色字符合成一次 fillText */
+function drawRuns(count, fgFn, textFn, xFn, baseline, breakEvery) {
+  let start = 0;
+  let cur = fgFn(0);
+  for (let c = 1; c <= count; c++) {
+    const fg = c < count ? fgFn(c) : null;
+    const forced = c < count && breakEvery && c % breakEvery === 0;
+    if (fg !== cur || forced) {
+      if (cur) {
+        ctx.fillStyle = cur;
+        ctx.fillText(textFn(start, c), xFn(start), baseline);
+      }
+      start = c; cur = fg;
+    }
+  }
+}
+
+function fillRangeBg(a, b, rowOff, bpr, y, color) {
+  const s = Math.max(a, rowOff), e = Math.min(b, rowOff + bpr);
+  if (s >= e) return;
+  const x0 = byteX(s - rowOff);
+  const x1 = byteX(e - rowOff - 1) + 2 * M.cellW;
+  ctx.fillStyle = color;
+  ctx.fillRect(x0, y, x1 - x0, M.rowH);
+}
+
+/** ASCII 列版底色（字符宽 = cell_w） */
+function fillRangeBgAscii(a, b, rowOff, bpr, y, color) {
+  const s = Math.max(a, rowOff), e = Math.min(b, rowOff + bpr);
+  if (s >= e) return;
+  const x0 = asciiX(s - rowOff);
+  const x1 = asciiX(e - rowOff - 1) + M.cellW;
+  ctx.fillStyle = color;
+  ctx.fillRect(x0, y, x1 - x0, M.rowH);
+}
+
+/** 单元格底色（实色）：补丁 > 选区 > 默认 */
+const PATCH_RANGES = PATCHES.map((p) => ({ start: p.start, len: p.len }));
+function bgFor(off, selA, selB) {
+  if (inRanges(PATCH_RANGES, off)) return C('--patch-ins-bg');
+  if (off >= selA && off < selB) return C('--selection');
+  if (Math.floor(off / state.bpr) === state.hoverRow) return C('--bg-raised');
+  return C('--bg-base');
+}
+
+/** hex 列前景色（按 z 序取最高命中层，05 §4.7 的简化版） */
+function hexFg(off, b, selA, selB) {
+  if (off >= selA && off < selB) return C('--on-accent');
+  if (inRanges(SEARCH_HITS, off)) return C('--l-search');
+  if (BOOKMARKS.indexOf(off) >= 0) return C('--l-bookmark');
+  if (deepestAt(off)) return C('--l-structure');
+  if (b === 0) return C('--hex-null');
+  return C('--l-value');
+}
+function asciiFg(off, b, selA, selB) {
+  if (off >= selA && off < selB) return C('--on-accent');
+  if (inRanges(SEARCH_HITS, off)) return C('--l-search');
+  if (b < 0x20 || b > 0x7e) return C('--hex-nonprint');
+  return C('--hex-ascii');
+}
+function asciiChar(b) {
+  return b >= 0x20 && b <= 0x7e ? String.fromCharCode(b) : '·';
+}
+
+/* ================================================================
+   8. 滚动：ScrollPos{row, sub} + 自绘滚动条（不用原生 ScrollArea）
+   ================================================================ */
+function clampScroll() {
+  const totalRows = Math.ceil(TOTAL / state.bpr);
+  const maxRow = Math.max(0, totalRows - M.viewRows);
+  state.scrollRow = clamp(Math.round(state.scrollRow), 0, maxRow);
+}
+function scrollTo(row, silent) {
+  clampScroll();
+  const totalRows = Math.ceil(TOTAL / state.bpr);
+  state.scrollRow = clamp(Math.round(row), 0, Math.max(0, totalRows - M.viewRows));
+  updateThumb();
+  updateStatus();
+  if (!silent) requestDraw();
+}
+function scrollBy(rows) { scrollTo(state.scrollRow + rows); }
+
+let wheelAcc = 0;
+function onWheel(e) {
+  e.preventDefault();
+  wheelAcc += e.deltaY * (e.deltaMode === 1 ? 40 : e.deltaMode === 2 ? 400 : 1);
+  const STEP = 32;                       // ≈ 3 行/格，触控板按 sp 累积（05 §4.2）
+  const rows = Math.trunc(wheelAcc / STEP);
+  if (rows !== 0) { wheelAcc -= rows * STEP; scrollBy(rows); }
+}
+
+/* --- 滚动条 thumb --- */
+const trackEl = $('scrollbar');
+const thumbEl = $('thumb');
+const tipEl = $('dragtip');
+let sb = { dragging: false, offY: 0, gran: 1, thumbH: 24, lastRow: null };
+
+function updateThumb() {
+  const totalRows = Math.ceil(TOTAL / state.bpr);
+  const trackH = M.h || 1;
+  const thumbH = clamp(Math.round((M.viewRows / totalRows) * trackH), 20, trackH);
+  const maxRow = Math.max(1, totalRows - M.viewRows);
+  const p = state.scrollRow / maxRow;
+  thumbEl.style.height = thumbH + 'px';
+  thumbEl.style.top = Math.round((trackH - thumbH) * clamp(p, 0, 1)) + 'px';
+  sb.thumbH = thumbH;
+}
+
+function thumbToRow(clientY) {
+  const rect = trackEl.getBoundingClientRect();
+  const usable = rect.height - (sb.thumbH || 20);
+  const p = clamp((clientY - rect.top - sb.offY) / Math.max(1, usable), 0, 1);
+  const totalRows = Math.ceil(TOTAL / state.bpr);
+  return Math.round(p * Math.max(0, totalRows - M.viewRows));
+}
+
+/** 拖动中的浮动提示：目标偏移 + 前 8 字节 + 行号（05 §4.2 ②） */
+function showTip(row) {
+  const bpr = state.bpr;
+  const off = row * bpr;
+  let bytes = '';
+  for (let i = 0; i < 8; i++) bytes += hex2(byteAt(off + i)) + (i < 7 ? ' ' : '');
+  // 目标偏移落在某个结构里时，顺带给出结构路径（05 §4.2 的预览提示）
+  const st = deepestAt(off);
+  const path = st ? ' · ' + st.name + ' +0x' + (off - st.start).toString(16).toUpperCase() : '';
+  tipEl.innerHTML =
+    '<div>→ 0x' + hex8(off) + '</div>' +
+    '<div class="row2">' + bytes + '</div>' +
+    '<div class="row3">' +
+    (lang === 'zh' ? '行 ' : 'row ') + row.toLocaleString() + ' / ' + Math.ceil(TOTAL / bpr).toLocaleString() +
+    ' · ' + sb.gran + 'x' + path + '</div>';
+  tipEl.style.display = 'block';
+  tipEl.style.top = Math.max(4, parseInt(thumbEl.style.top || '0', 10) - 4) + 'px';
+}
+
+thumbEl.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  try { thumbEl.setPointerCapture(e.pointerId); } catch (_) { /* 合成事件无活跃指针 */ }
+  sb.dragging = true;
+  thumbEl.classList.add('drag');
+  const rect = thumbEl.getBoundingClientRect();
+  sb.offY = e.clientY - rect.top;
+  sb.lastRow = null;
+  showTip(state.scrollRow);
+});
+thumbEl.addEventListener('pointermove', (e) => {
+  if (!sb.dragging) return;
+  const want = thumbToRow(e.clientY);
+  if (sb.gran === 1) {
+    scrollTo(want, true);              // 1x：thumb 严格跟手，内容按比例跳（05 §4.2 ①）
+  } else {
+    // 16x / 256x：把指针位移折算成 Δrow ÷ 档位，用于微调最后几十万行
+    if (sb.lastRow === null) sb.lastRow = want;
+    scrollTo(state.scrollRow + (want - sb.lastRow) / sb.gran, true);
+  }
+  sb.lastRow = want;
+  showTip(state.scrollRow);
+  requestDraw();
+});
+thumbEl.addEventListener('pointerup', () => {
+  sb.dragging = false;
+  thumbEl.classList.remove('drag');
+  tipEl.style.display = 'none';
+});
+// 双击 thumb 切换粒度档位（1x / 16x / 256x），用于微调最后几十万行
+thumbEl.addEventListener('dblclick', () => {
+  sb.gran = sb.gran === 1 ? 16 : sb.gran === 16 ? 256 : 1;
+  toast(sb.gran + 'x ' + (lang === 'zh' ? '滚动粒度' : 'scroll granularity'));
+});
+// 点轨道 = 翻页
+trackEl.addEventListener('pointerdown', (e) => {
+  if (e.target === thumbEl) return;
+  const rect = trackEl.getBoundingClientRect();
+  const down = e.clientY > rect.top + thumbEl.offsetTop + thumbEl.offsetHeight;
+  scrollBy(down ? M.viewRows : -M.viewRows);
+});
+
+/* ================================================================
+   9. 光标与选区（05 §4.5）
+   ================================================================ */
+function hitTest(px, py) {
+  const row = state.scrollRow + Math.floor(py / M.rowH);
+  const rowOff = row * state.bpr;
+  if (py < 0 || rowOff >= TOTAL) return null;
+  // ASCII 列
+  if (M.ascii && px >= M.asciiX - 6) {
+    const c = Math.floor((px - M.asciiX) / M.cellW);
+    if (c >= 0 && c < state.bpr) return { off: rowOff + c, nib: 2, row };
+    return null;
+  }
+  // hex 列：逐格判断（bpr ≤ 64，循环成本可忽略）
+  for (let c = 0; c < state.bpr; c++) {
+    const x = byteX(c);
+    if (px >= x - M.cellW * 0.5 && px < x + 2 * M.cellW + M.cellW * 0.5) {
+      const nib = px < x + M.cellW ? 0 : 1;
+      return { off: rowOff + c, nib, row };
+    }
+  }
+  return null;
+}
+
+function setCursor(off, nib, extend) {
+  off = clamp(off, 0, TOTAL - 1);
+  state.cursor.off = off;
+  if (nib !== undefined) state.cursor.nib = nib;
+  if (extend) state.sel.head = off;
+  else { state.sel.anchor = off; state.sel.head = off; }
+  ensureVisible(off);
+  updateStatus();
+  updateInspector();
+  requestDraw();
+}
+
+/** 保证 cursor 在视口内（保持"光标屏幕相对位置"的简化版） */
+function ensureVisible(off) {
+  const row = Math.floor(off / state.bpr);
+  if (row < state.scrollRow) scrollTo(row, true);
+  else if (row >= state.scrollRow + M.viewRows) scrollTo(row - M.viewRows + 1, true);
+}
+
+function revealRange(start, len) {
+  const row = Math.floor(start / state.bpr);
+  scrollTo(row - Math.floor(M.viewRows / 2) + 2, true);
+  state.sel.anchor = start;
+  state.sel.head = start + len - 1;
+  setCursor(start, 0, false);
+  state.sel.anchor = start;
+  state.sel.head = start + len - 1;
+  updateStatus(); updateInspector(); requestDraw();
+}
+
+/* --- 鼠标 --- */
+let pointerDown = false;
+function localPos(e) {
+  const r = canvas.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+canvas.addEventListener('pointerdown', (e) => {
+  if (e.button === 2) return;
+  const p = localPos(e);
+  const hit = hitTest(p.x, p.y);
+  if (!hit) return;
+  canvas.setPointerCapture(e.pointerId);
+  pointerDown = true;
+  state.cursor.off = hit.off; state.cursor.nib = hit.nib;
+  if (e.shiftKey) state.sel.head = hit.off;
+  else { state.sel.anchor = hit.off; state.sel.head = hit.off; }
+  updateStatus(); updateInspector(); requestDraw();
+});
+canvas.addEventListener('pointermove', (e) => {
+  const p = localPos(e);
+  if (!pointerDown) {
+    const hit = hitTest(p.x, p.y);
+    const hr = hit ? hit.row : -1;
+    if (hr !== state.hoverRow) { state.hoverRow = hr; requestDraw(); }
+    canvas.style.cursor = hit ? 'text' : 'default';
+    return;
+  }
+  // 拖动到视口外自动滚动（速度随距离增长，上限 8 行/次）
+  if (p.y < 0) { scrollBy(-Math.min(8, 1 + Math.ceil(-p.y / M.rowH))); }
+  else if (p.y > M.h) { scrollBy(Math.min(8, 1 + Math.ceil((p.y - M.h) / M.rowH))); }
+  const y = clamp(p.y, 0, M.h - 1);
+  const x = clamp(p.x, 0, M.w - 1);
+  const hit = hitTest(x, y);
+  if (hit) { state.sel.head = hit.off; state.cursor.off = hit.off; state.cursor.nib = hit.nib; }
+  updateStatus(); updateInspector(); requestDraw();
+});
+window.addEventListener('pointerup', () => { pointerDown = false; });
+canvas.addEventListener('mouseleave', () => {
+  if (state.hoverRow !== -1) { state.hoverRow = -1; requestDraw(); }
+});
+canvas.addEventListener('dblclick', (e) => {
+  const p = localPos(e);
+  const hit = hitTest(p.x, p.y);
+  if (!hit) return;
+  const node = deepestAt(hit.off);
+  if (node) revealRange(node.start, node.len);          // 双击 = 选中所属最深结构节点
+  else { state.sel.anchor = hit.off; state.sel.head = hit.off + state.bpr - 1; updateStatus(); requestDraw(); }
+});
+$('hexwrap').addEventListener('wheel', onWheel, { passive: false });
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  const p = localPos(e);
+  const hit = hitTest(p.x, p.y);
+  if (hit) {
+    state.cursor.off = hit.off;
+    state.cursor.nib = hit.nib;
+    // 右键落在选区外 → 收拢为单字节；落在选区内 → 保留选区
+    const [a, b] = selRange();
+    if (!(hit.off >= a && hit.off < b)) { state.sel.anchor = hit.off; state.sel.head = hit.off; }
+    updateStatus(); requestDraw();
+  }
+  openCtxMenu(e.clientX, e.clientY);
+});
+
+/* ================================================================
+   10. 键盘
+   ================================================================ */
+document.addEventListener('keydown', (e) => {
+  const tag = (document.activeElement && document.activeElement.tagName) || '';
+  const typing = tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA';
+
+  if (e.key === 'Escape') {
+    closeCtxMenu(); closeDialog();
+    if (!typing && (state.sel.anchor !== state.sel.head)) {
+      state.sel.anchor = state.cursor.off; state.sel.head = state.cursor.off;
+      updateStatus(); requestDraw();
+    }
+    return;
+  }
+  if (typing) return;
+
+  const mod = e.metaKey || e.ctrlKey;
+  // 16 §4.4 默认键位里带 Shift 的几档要先判定，否则会被下面的 Ctrl+G / Ctrl+A 吞掉
+  if (mod && e.shiftKey && (e.key === 't' || e.key === 'T')) { e.preventDefault(); cycleTheme(); return; }
+  if (mod && e.shiftKey && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); runCmd('menu.tools.ai'); return; }
+  if (mod && !e.shiftKey && (e.key === 'b' || e.key === 'B')) { e.preventDefault(); togglePanel('left'); return; }
+  if (mod && (e.key === 'g' || e.key === 'G')) { e.preventDefault(); openDialog(); return; }
+  if (mod && (e.key === 'a' || e.key === 'A')) {
+    e.preventDefault();
+    state.sel.anchor = 0; state.sel.head = TOTAL - 1; updateStatus(); requestDraw(); return;
+  }
+
+  const bpr = state.bpr;
+  let off = state.cursor.off, handled = true;
+  switch (e.key) {
+    case 'ArrowLeft':  off -= 1; break;
+    case 'ArrowRight': off += 1; break;
+    case 'ArrowUp':    off -= bpr; break;
+    case 'ArrowDown':  off += bpr; break;
+    case 'PageUp':     off -= M.viewRows - 1; break;
+    case 'PageDown':   off += M.viewRows - 1; break;
+    case 'Home':       off = mod ? 0 : Math.floor(off / bpr) * bpr; break;
+    case 'End':        off = mod ? TOTAL - 1 : Math.floor(off / bpr) * bpr + bpr - 1; break;
+    default: handled = false;
+  }
+  if (!handled) return;
+  e.preventDefault();
+  setCursor(off, state.cursor.nib, e.shiftKey);
+});
+
+/* ================================================================
+   11. 右键菜单 / 复制 / 书签
+   ================================================================ */
+const ctxEl = $('ctxmenu');
+function openCtxMenu(x, y) {
+  ctxEl.innerHTML = '';
+  const items = [
+    ['ctx.copyhex', 'Ctrl+C', () => copySel('hex')],
+    ['ctx.copyarr', '', () => copySel('arr')],
+    ['sep'],
+    ['ctx.goto', 'Ctrl+G', () => { closeCtxMenu(); openDialog(); }],
+    ['ctx.bookmark', '', () => {
+      const off = state.cursor.off;
+      if (BOOKMARKS.indexOf(off) < 0) BOOKMARKS = BOOKMARKS.concat(off);
+      toast(t('toast.bookmark', { off: '0x' + hex8(off) }));
+      requestDraw();
+    }],
+  ];
+  for (const it of items) {
+    if (it[0] === 'sep') { ctxEl.appendChild(div('sep')); continue; }
+    const b = document.createElement('button');
+    b.className = 'item';
+    b.innerHTML = '<span>' + t(it[0]) + '</span>' + (it[1] ? '<span class="k">' + it[1] + '</span>' : '');
+    b.onclick = () => { closeCtxMenu(); it[2](); };
+    ctxEl.appendChild(b);
+  }
+  ctxEl.style.display = 'block';
+  const w = ctxEl.offsetWidth, h = ctxEl.offsetHeight;
+  ctxEl.style.left = Math.min(x, window.innerWidth - w - 6) + 'px';
+  ctxEl.style.top = Math.min(y, window.innerHeight - h - 6) + 'px';
+}
+function div(cls) { const d = document.createElement('div'); d.className = cls; return d; }
+function closeCtxMenu() { ctxEl.style.display = 'none'; }
+document.addEventListener('pointerdown', (e) => {
+  if (!ctxEl.contains(e.target)) closeCtxMenu();
+  if (!e.target.closest('.menu')) closeAllMenus();
+}, true);
+
+/** 复制：mockup 上限 4096 B（真实现里是整段选区，不做物化） */
+function copySel(kind) {
+  const [a, b] = selRange();
+  const n = Math.min(b - a, 4096);
+  let out = '';
+  if (kind === 'hex') {
+    for (let i = 0; i < n; i++) {
+      out += hex2(byteAt(a + i)) + ' ';
+      if ((i + 1) % 16 === 0) out += '\n';
+    }
+    out = out.trim();
+  } else {
+    const parts = [];
+    for (let i = 0; i < n; i++) parts.push('0x' + hex2(byteAt(a + i)));
+    out = parts.join(', ');
+  }
+  copyText(out);
+  // 只有真的被截断时才提 4096 B 上限，避免小选区也跳出上限说明
+  toast(t(b - a > n ? 'toast.copied.trunc' : 'toast.copied', { n: n }));
+}
+function copyText(s) {
+  // file:// 下 Clipboard API 常被拒，兜底用临时 textarea + execCommand
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(s).catch(() => fallbackCopy(s));
+  } else fallbackCopy(s);
+}
+function fallbackCopy(s) {
+  const ta = document.createElement('textarea');
+  ta.value = s;
+  ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+  document.body.appendChild(ta);
+  ta.select();
+  try { document.execCommand('copy'); } catch (e) { /* 忽略：只影响 mockup 的复制体验 */ }
+  document.body.removeChild(ta);
+}
+
+/* ================================================================
+   12. 跳转对话框（Ctrl+G）
+   ================================================================ */
+const dlg = $('dialog'), dlgInput = $('dlgInput'), dlgErr = $('dlgErr');
+function openDialog() {
+  dlg.classList.add('show');
+  $('dlgTitle').textContent = t('goto.title');
+  $('dlgHint').textContent = t('goto.hint');
+  $('dlgOk').textContent = lang === 'zh' ? '跳转' : 'Go';
+  $('dlgCancel').textContent = lang === 'zh' ? '取消' : 'Cancel';
+  dlgErr.style.display = 'none';
+  dlgErr.textContent = t('goto.invalid');
+  dlgInput.value = '0x' + hex8(state.cursor.off);
+  setTimeout(() => { dlgInput.focus(); dlgInput.select(); }, 0);
+}
+function closeDialog() { dlg.classList.remove('show'); }
+
+function doGoto(raw) {
+  let s = String(raw).trim().replace(/[\s_,]/g, '');
+  if (!s) return null;
+  if (/^0x/i.test(s)) s = s.slice(2);
+  if (!/^[0-9a-fA-F]+$/.test(s)) return null;
+  const v = parseInt(s, 16);
+  if (!isFinite(v) || v < 0 || v >= TOTAL) return null;
+  return v;
+}
+$('dlgOk').onclick = () => {
+  const v = doGoto(dlgInput.value);
+  if (v === null) { dlgErr.style.display = 'block'; return; }
+  closeDialog();
+  jumpTo(v);
+};
+$('dlgCancel').onclick = closeDialog;
+dlgInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') { e.preventDefault(); $('dlgOk').click(); }
+  if (e.key === 'Escape') { e.preventDefault(); closeDialog(); }
+});
+dlg.addEventListener('pointerdown', (e) => { if (e.target === dlg) closeDialog(); });
+
+/** 跳转 + 闪烁高亮 */
+function jumpTo(off) {
+  const row = Math.floor(off / state.bpr);
+  scrollTo(row - Math.floor(M.viewRows / 2), true);
+  state.sel.anchor = off; state.sel.head = off;
+  state.cursor.off = off; state.cursor.nib = 0;
+  state.flashT0 = performance.now();
+  updateStatus(); updateInspector(); requestDraw();
+  const tick = () => {
+    if (state.flashT0 < 0) return;
+    requestDraw();
+    if (performance.now() - state.flashT0 < 560) requestAnimationFrame(tick);
+    else { state.flashT0 = -1; requestDraw(); }
+  };
+  requestAnimationFrame(tick);
+  toast(t('toast.moved', { off: '0x' + hex8(off) }));
+}
+
+/* ================================================================
+   13. 状态栏 / Inspector / 图层
+   ================================================================ */
+function updateStatus() {
+  const [a, b] = selRange();
+  $('st-offset').textContent = '0x' + hex8(state.cursor.off);
+  $('st-sel').textContent = fmtSize(b - a);
+  $('st-size').textContent = fmtSize(TOTAL);
+  $('st-patch').textContent = String(PATCHES.length);
+  $('i-off').textContent = '0x' + hex8(state.cursor.off);
+  const node = deepestAt(state.cursor.off);
+  $('inspPath').textContent = node ? node.name : 'PE64';
+}
+
+function updateInspector() {
+  const off = state.cursor.off;
+  const b0 = byteAt(off), b1 = byteAt(off + 1), b2 = byteAt(off + 2), b3 = byteAt(off + 3);
+  const any = (v) => (v < 0 ? 0 : v);
+  const u32 = (any(b0) | (any(b1) << 8) | (any(b2) << 16) | (any(b3) << 24)) >>> 0;
+  $('i-val').textContent = '0x' + hex8(u32) + '  (' + u32 + ')';
+  const ascii = asciiChar(any(b0));
+  const node = deepestAt(off);
+  $('i-hint').textContent = node
+    ? node.name + ' · +0x' + (off - node.start).toString(16).toUpperCase()
+    : (lang === 'zh'
+      ? '未命中结构 · 原始字节 ' + hex2(any(b0)) + ' "' + ascii + '"'
+      : 'no structure hit · raw byte ' + hex2(any(b0)) + ' "' + ascii + '"');
+  $('i-len').textContent = '4 B';
+  $('i-type').textContent = 'u32le';
+}
+
+/* 图层列表：z 序固定，不可改名/重排（05 §4.7） */
+const LAYER_DEF = [
+  ['--l-value', { zh: '值 Value', en: 'Value' }, 1],
+  ['--l-search', { zh: '搜索 Search', en: 'Search' }, 2],
+  ['--l-structure', { zh: '结构 Structure', en: 'Structure' }, 3],
+  ['--selection', { zh: '选区 Selection', en: 'Selection' }, 5],
+  ['--l-bookmark', { zh: '书签 Bookmark', en: 'Bookmark' }, 6],
+  ['--l-cursor', { zh: '光标 Cursor', en: 'Cursor' }, 10],
+];
+function buildLayers() {
+  const box = $('layers');
+  box.innerHTML = '';
+  for (const [color, name, z] of LAYER_DEF) {
+    const row = div('layer');
+    row.innerHTML =
+      '<span class="ck" style="background:' + C(color) + '"></span>' +
+      '<span class="nm2">' + name[lang] + '</span>' +
+      '<span class="z">z' + z + '</span>';
+    box.appendChild(row);
+  }
+}
+
+/* ================================================================
+   14. 菜单 / 工具栏 / 主题 / 语言 / bpr
+   ================================================================ */
+const MENUS = {
+  file: [['menu.file.new', 'Ctrl+N'], ['menu.file.open', 'Ctrl+O'], ['menu.file.save', 'Ctrl+S'],
+         ['menu.file.saveas', 'Ctrl+Shift+S'], ['sep'], ['menu.file.close', 'Ctrl+W']],
+  edit: [['menu.edit.undo', 'Ctrl+Z'], ['menu.edit.redo', 'Ctrl+Shift+Z'], ['sep'],
+         ['menu.edit.copy', 'Ctrl+C'], ['menu.edit.selectall', 'Ctrl+A']],
+  view: [['menu.view.theme', 'Ctrl+Shift+T'], ['menu.view.left', 'Ctrl+B'],
+         ['menu.view.right', 'Ctrl+Shift+I'], ['menu.view.zoom', 'Ctrl+0']],
+  search: [['menu.search.find', 'Ctrl+F'], ['menu.search.next', 'F3']],
+  nav: [['menu.nav.goto', 'Ctrl+G'], ['menu.nav.home', 'Ctrl+Home'], ['menu.nav.end', 'Ctrl+End']],
+  tools: [['menu.tools.diff', 'Ctrl+Shift+D'], ['menu.tools.yara', 'Ctrl+Shift+Y'],
+          ['menu.tools.ai', 'Ctrl+Shift+G']],
+  help: [['menu.help.about', '']],
+};
+function buildMenus() {
+  const box = $('menus');
+  box.innerHTML = '';
+  for (const id in MENUS) {
+    const wrap = div('menu');
+    const btn = document.createElement('button');
+    btn.textContent = t('menubar.' + id);
+    btn.onclick = (e) => {
+      e.stopPropagation();
+      const wasOpen = wrap.classList.contains('open');
+      closeAllMenus();
+      if (!wasOpen) wrap.classList.add('open');
+    };
+    const dd = div('dropdown');
+    for (const it of MENUS[id]) {
+      if (it[0] === 'sep') { dd.appendChild(div('sep')); continue; }
+      const b = document.createElement('button');
+      b.className = 'item';
+      b.innerHTML = '<span>' + t(it[0]) + '</span><span class="k">' + it[1] + '</span>';
+      b.onclick = () => { closeAllMenus(); runCmd(it[0]); };
+      dd.appendChild(b);
+    }
+    wrap.appendChild(btn); wrap.appendChild(dd);
+    box.appendChild(wrap);
+  }
+}
+function closeAllMenus() {
+  document.querySelectorAll('.menu.open').forEach((m) => m.classList.remove('open'));
+}
+
+function runCmd(key) {
+  // 少数命令在 mockup 里是真能跑的，其余给 toast
+  if (key === 'menu.nav.goto') return openDialog();
+  if (key === 'menu.view.theme') return cycleTheme();
+  if (key === 'menu.view.left') return togglePanel('left');
+  if (key === 'menu.view.right') return togglePanel('right');
+  if (key === 'menu.edit.copy') return copySel('hex');
+  if (key === 'menu.edit.selectall') {
+    state.sel.anchor = 0; state.sel.head = TOTAL - 1; updateStatus(); requestDraw(); return;
+  }
+  if (key === 'menu.nav.home') return jumpTo(0);
+  if (key === 'menu.nav.end') return jumpTo(TOTAL - 1);
+  toast(t('toast.mock', { cmd: t(key) }));
+}
+
+const THEME_ORDER = ['dark', 'light', 'hc'];
+function cycleTheme() {
+  const i = THEME_ORDER.indexOf(themeId);
+  applyTheme(THEME_ORDER[(i + 1) % THEME_ORDER.length]);
+}
+function togglePanel(side) {
+  const el = $(side);
+  el.style.display = el.style.display === 'none' ? 'flex' : 'none';
+  setTimeout(relayout, 0);
+}
+
+/* 工具栏按钮 */
+/* 工具栏是菜单命令的白名单子集：按钮只持有 CommandId（16 §4.2） */
+document.querySelectorAll('[data-cmd]').forEach((b) => {
+  b.onclick = () => runCmd('menu.' + b.dataset.cmd);
+});
+
+$('tbGoto').onclick = openDialog;
+$('gotoInput').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    const v = doGoto(e.target.value);
+    if (v === null) toast(t('goto.bad'));
+    else { e.target.value = ''; jumpTo(v); }
+  }
+});
+
+$('selBpr').addEventListener('change', (e) => {
+  const off = state.cursor.off;
+  state.bprReq = parseInt(e.target.value, 10);
+  relayout();
+  // 保持光标可见（05 §4.2 锚定原则）
+  ensureVisible(off);
+  updateThumb(); updateStatus(); updateInspector(); requestDraw();
+  updateToolbarHint();
+});
+$('selTheme').addEventListener('change', (e) => { applyTheme(e.target.value); buildLayers(); });
+$('selLang').addEventListener('change', (e) => { lang = e.target.value; applyI18n(); updateInspector(); });
+
+function updateToolbarHint() {
+  const rows = Math.ceil(TOTAL / state.bpr);
+  const downgraded = state.bpr !== state.bprReq;
+  const bprLabel = downgraded ? state.bprReq + '→' + state.bpr : String(state.bpr);
+  let s = bprLabel + ' B/' + (lang === 'zh' ? '行' : 'row') +
+    ' · ' + rows.toLocaleString() + (lang === 'zh' ? ' 行' : ' rows');
+  if (downgraded)                                       // 运行时下调的告警（不静默，05 §3.3）
+    s += lang === 'zh' ? ' · 窗口过窄，已临时下调' : ' · narrowed (window too small)';
+  if (!M.ascii) s += ' · ASCII ' + (lang === 'zh' ? '已折叠' : 'folded');
+  $('tbHint').textContent = s;
+}
+
+/* 结构树点击 = reveal_range（05 §4.8 双向联动） */
+$('tree').addEventListener('click', (e) => {
+  const node = e.target.closest('.node');
+  if (!node) return;
+  document.querySelectorAll('#tree .node.sel').forEach((n) => n.classList.remove('sel'));
+  node.classList.add('sel');
+  const tw = node.querySelector('.tw');
+  if (tw && node.dataset.tw) {
+    const kids = node.nextElementSibling;
+    if (kids && kids.classList.contains('kids')) {
+      kids.classList.toggle('hide');
+      tw.textContent = kids.classList.contains('hide') ? '▸' : '▾';
+      tw.classList.toggle('open', !kids.classList.contains('hide'));
+      return;
+    }
+  }
+  const start = parseInt(node.dataset.start || '0', 10);
+  const len = parseInt(node.dataset.len || '16', 10);
+  revealRange(start, len);
+  state.flashT0 = performance.now();
+  requestDraw();
+});
+
+/* 分隔条拖动（左 180~480 / 右 240~560，16 §4.1） */
+document.querySelectorAll('.splitter').forEach((sp) => {
+  sp.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    try { sp.setPointerCapture(e.pointerId); } catch (_) { /* 合成事件无活跃指针 */ }
+    const side = sp.dataset.side;
+    const el = $(side);
+    const startW = el.getBoundingClientRect().width;
+    const startX = e.clientX;
+    const move = (ev) => {
+      const d = ev.clientX - startX;
+      const w = side === 'left' ? startW + d : startW - d;
+      const lo = side === 'left' ? 180 : 240;
+      const hi = side === 'left' ? 480 : 560;
+      el.style.flex = '0 0 ' + clamp(w, lo, hi) + 'px';
+      el.style.width = clamp(w, lo, hi) + 'px';
+      relayout();
+    };
+    const up = () => {
+      sp.removeEventListener('pointermove', move);
+      sp.removeEventListener('pointerup', up);
+      relayout();
+    };
+    sp.addEventListener('pointermove', move);
+    sp.addEventListener('pointerup', up);
+  });
+});
+
+/* 说明条关闭 */
+$('noticeClose').onclick = () => {
+  $('notice').classList.add('hidden');
+  setTimeout(relayout, 0);
+};
+
+/* 文件标签：mockup 里只切换选中态（三个标签共用同一虚拟字节源） */
+for (const tab of $('tabs').querySelectorAll('.tab')) {
+  tab.addEventListener('click', () => {
+    if (tab.classList.contains('add')) { toast(t('toast.newtab')); return; }
+    $('tabs').querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
+    tab.classList.add('active');
+    toast(t('toast.sameData', { name: tab.textContent.replace('✕', '').trim() }));
+  });
+}
+
+/* 右栏页签：检查器是唯一有内容的面板，其余切到占位说明 */
+{
+  const tabs2 = document.querySelectorAll('#right .tab2');
+  const insp = document.querySelector('#right .insp');
+  const alt = $('inspAlt');
+  tabs2.forEach((b, i) => b.addEventListener('click', () => {
+    tabs2.forEach((x) => x.classList.remove('active'));
+    b.classList.add('active');
+    insp.style.display = i === 0 ? '' : 'none';
+    alt.hidden = i === 0;
+    if (i !== 0) alt.firstElementChild.textContent = t('insp.alt');
+  }));
+}
+
+/* ================================================================
+   15. toast 与启动
+   ================================================================ */
+let toastTimer = 0;
+function toast(msg) {
+  const el = $('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 1800);
+}
+
+window.addEventListener('resize', () => relayout());
+if (window.ResizeObserver) new ResizeObserver(() => relayout()).observe($('hexwrap'));
+
+// 启动顺序：主题 → i18n → 度量 → 首帧
+applyTheme('dark');
+applyI18n();
+relayout();
+updateInspector();
+scrollTo(state.scrollRow, true);
+requestDraw();
+
+// 让"2 个后台任务"的转圈看着像活的（纯装饰）
+let spin = 0;
+setInterval(() => {
+  spin = (spin + 30) % 360;
+  const el = document.querySelector('#mb-right .spin');
+  if (el) el.style.transform = 'rotate(' + spin + 'deg)';
+}, 400);
+
+/* 调试钩子：仅供自动化测试与 Rust 端行为对照，正常交互不依赖它 */
+window.geodeMock = {
+  get state() { return state; },
+  get metrics() { return M; },
+  hitTest: hitTest,
+  jumpTo: jumpTo,
+  selRange: selRange,
+  byteAt: byteAt,
+  scrollTo: scrollTo,
+  setBpr(n) { state.bprReq = n; relayout(); },
+  probeLayout(n) { const keep = state.bprReq; state.bprReq = n; state.bpr = n; const L = computeLayout(M.w); state.bprReq = keep; return L; },
+};
+})();
+</script>
+</body>
+</html>

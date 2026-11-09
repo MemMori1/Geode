@@ -40,6 +40,8 @@ ImHex 证明了"hex 视图 + 结构描述语言"这条路能做成产品，但�
 | 23 | [自有格式规范](docs/23-file-formats.md) | 7 个格式的正式规范、字节级布局、schema、测试向量、EB 错误码、弃用政策 | `TooNew` 一律拒绝且不写盘；未知字段在 config 保留、在项目告警 |
 | 24 | [迁移与互操作](docs/24-migration-and-interop.md) | 010 bt / hexpat / Kaitai / C header → BinSpec，统一 IR，GPL 红线，反向导出 | Kaitai 第一优先（60~75% 自动）；`.hexpat` 默认禁用、产物 `local-only` 永不入索引 |
 | 25 | [交互流程与文案](docs/25-ux-flows-and-copy.md) | 6 条核心旅程、ASCII 线框、文档状态机、术语表、错误话术三段式 | 只读降级优先于拒绝打开；长任务永不阻塞输入且可取消 |
+| 26 | [视觉设计](docs/26-visual-design.md) | 4dp 栅格、五级字阶、hex 单元格乘法几何、四态、48 图标、四套主题完整色表 | 否决斑马纹（与 `Value` 层抢通道）；hex 列宽永远乘法不累加 |
+| — | [视觉原型](docs/img/mockup.html) | 单文件 HTML 原型：可滚动/可选字节/切主题切语言 | 双击即开，零外部依赖；给实现提供像素靶子 |
 | ADR | [架构决策记录](docs/adr/README.md) | 18 篇不可变决策记录（piece table、placeholder 4KiB、否决 ScrollArea / egui C shim / 可分离窗口 / libyara…） | 只增不改；修订写新号并标"被 NNNN 取代" |
 
 ---

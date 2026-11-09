@@ -379,6 +379,8 @@ pub enum UiEvent { Progress(JobId, f32), Diag(Vec<Diag>), Done(JobId, JobResult)
 | `23-file-formats.md` | 七个自有格式的正式规范、schema、测试向量、弃用政策 | 各子系统的语义（见 15/17） |
 | `24-migration-and-interop.md` | 从外部生态导入模板、IR、GPL 红线、反向导出 | Verifier 本身（见 03） |
 | `25-ux-flows-and-copy.md` | 核心旅程、线框、文档状态机、文案规范 | 视觉与主题（见 16） |
+| `26-visual-design.md` | 栅格/字阶/hex 几何/四态/图标/四套主题色表/像素回归基线 | 交互流程与文案（见 25） |
+| `img/mockup.html` | 单文件可视化原型（零外链，可离线双击） | 实现参考，非规范 |
 | `adr/NNNN-*.md` | 关键决策与否决理由的不可变记录 | 设计细节（引用正文文档） |
 
 ---

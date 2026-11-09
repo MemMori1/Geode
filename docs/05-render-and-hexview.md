@@ -88,9 +88,9 @@ pub struct Layout { pub row_h: f32, pub first_row: u64, pub visible_rows: u16,  
 | 配置项 | 类型 | 默认值 | 取值范围 | 说明 |
 |---|---|---|---|---|
 | `bytes_per_row` | u8 | **16** | 1..=64 | 宽度不足时**运行时下调**但不写回配置（§6 #4） |
-| `row_h` | enum | **Auto** | Auto / 12..=48 sp | Auto = `ceil(ascent+descent) + 2*row_pad`，量化到整设备像素 |
+| `row_h` | enum | **Auto** | Auto / 12..=48 sp | Auto = `ceil(ascent+descent) + 2*row_pad`，量化到整设备像素。**注意与 16 §4.7 的 UI 行高公式分工**：hex 网格用本式（含 `row_pad` 保点击性），面板/列表用 `round(max(row_height, ppp*size*1.35))` |
 | `row_pad` | f32 | **2.0** | 0..=8 | 小字号下靠 padding 保证可点击性 |
-| `font.family` | enum | **内置 JetBrains Mono 子集** | 内置 / 系统等宽 | **禁止回退到 UI 字体**：CJK fallback 会破坏列宽（`01 §3.2`） |
+| `font.family` | enum | **内置 Sarasa Mono SC**（`builtin:sarasa-mono-sc`，16 §4.7 为字体权威） | 内置 / 系统等宽 | **禁止回退到 UI 字体**：CJK fallback 会破坏列宽（`01 §3.2`） |
 | `font.size` | f32 | **13.0** | 8..=28 | 与 `row_h` 解耦 |
 | `address_format` | enum | **Hex / 大写 / 无前缀 / 补 0** | Hex / Dec / Relative / None | 前缀 `0x` 与相对基址由工作区决定 |
 | `address_width` | enum | **Auto** | Auto / Fixed(n) | Auto = `ceil(log16(len))`，最小 6 位防抖动（§4.2） |
@@ -190,7 +190,7 @@ first_off     = scroll.row * bpr   （checked；溢出视作 EOF 之后）
 | Ctrl+↑/↓ | 段落跳转：上/下一个结构单元（`units()`）；无结构时跳到下一个 16 字节对齐空行块 |
 | Home / End | 行首/行尾；Ctrl+Home/End = 文件首/尾 |
 | 中键拖动 | 抓取式平移，1:1 跟随 Δy，无加速度、无惯性，越界即停 |
-| Ctrl+滚轮 | 缩放 `font.size`（8..=28），`row_h` 跟随，光标行屏幕位置不变 |
+| Ctrl+滚轮 | 缩放 `font.size`（8..=28），`row_h` 跟随，光标行屏幕位置不变。**与 16 §4.4 的全局 `zoom`(0.6~3.0) 叠加时先乘后钳**：`effective_size = clamp(font_size * zoom, 8, 28)`，避免 3.0×28 越界（26 Q5） |
 
 **锚定原则**：滚动 / 缩放 / 改 `bytes_per_row` 时保持"光标字节的屏幕相对位置"；光标不可见则保持视口顶行不变。
 
@@ -358,7 +358,7 @@ resolve(cell)，遍历 10 层中命中的 ann：
 | 1 | `read_at` 返回 `Err` / 超时 | Job 结果 | 块标 `Failed`，指数退避 50/200/800ms；3 次后停手 → 该行斜纹 + 角标"不可读"；不弹模态，不影响其它行 |
 | 2 | `size` 变小（截断 / volatile）或存在空洞（`Caps.holes`） | 每 500ms `poll_change` + `len()` 比对；块内 `read` 部分失败 | 立即 clamp 光标与选区，超出部分画 EOF 区并一次性提示"文件已缩小至 N 字节"；空洞按 64 字节位图存 `Holes`，画红灰斜纹 + `!`（与"加载中"斜纹区分） |
 | 3 | 字体缺字（UTF-16 / EBCDIC / CJK） | 图集 miss + fallback 链 | 逐字 fallback；fallback 宽度 ≠ `cell_w` → 渲染 `invalid_glyph` 并在 tooltip 显示 `U+XXXX`；缺字率 > 5% 顶部提示条建议切 HexII |
-| 4 | 超长单行（bpr=64）宽度不足 | 布局期 `hex_w > avail_w` | **不做横向滚动**（破坏"行"概念且自绘横滚体验差）；运行时把绘制 `bpr` 降到最大可行值（32→16），偏移列后加 `⌁` 标记 + 提示"已按 32 字节/行显示"；**不写回配置** |
+| 4 | 超长单行（bpr=64）宽度不足 | 布局期 `hex_w > avail_w` | **降级梯度（顺序固定，25 §4.2 线框 2 同此）**：① 可用宽 < 560dp 时先折叠 ASCII 列（偏移列后加 `⌁`）；② 仍不足才把绘制 `bpr` 降到最大可行值（64→32→16），提示"已按 32 字节/行显示"。**不做横向滚动**（破坏"行"概念且自绘横滚体验差），两处降级**都不写回配置** |
 | 5 | 极端 DPI（0.75x / 4x） | `pixels_per_point` 变化 | 几何走 sp → 设备像素取整；`row_h` 取整后若裁切字形则 +1px；图集按 `ppb_bucket` 分桶，最多 4 份（< 16MB） |
 | 6 | 结构树数百万节点 | `covering()` > 5ms/次 | 只画顶层 `units()` 色带，关 bracket 与深度阶梯；结构树面板自行虚拟化（`16`）；`deepest_at` 仍 O(log n) 不受影响 |
 | 7 | Ann 爆炸（YARA 10 万命中） | 单行命中 > 32 | 按 `priority` 截断，行首显示 `+N` 角标；hover 展开列表 |
@@ -414,7 +414,7 @@ resolve(cell)，遍历 10 层中命中的 ann：
 | `edit.illegal_pulse_ms` / `.paste_ambig_prompt` | `120` / `true` | 非法输入脉冲 / `ABCD` 类歧义是否弹选择 |
 | `edit.delete_fill_byte` | `null` | 覆盖模式 Delete 的填充字节；`null` = 不写（§4.6 决策） |
 | `overlay.max_bands_per_row` / `.max_brackets` / `.pinned_max` | `8` / `4` / `8` | 色带 / 括号缩进 / 固定节点上限 |
-| `statistics.entropy_window` / `a11y.min_target_px` / `.reduce_motion` | `4096` / `18` / `false` | 熵滑窗 / 最小可点击行高 / 关闭平滑滚动与闪烁 |
+| `statistics.entropy_window` / `a11y.min_row_px` / `a11y.min_target_px` / `.reduce_motion` | `4096` / `18` / `24` / `false` | 熵滑窗 / hex 行高下限 / 指针目标下限（24dp，见 25 §6.2） / 关闭平滑滚动与闪烁 |
 
 - 配置版本 `hexview.cfg = 3`；缺失字段取默认（向前兼容），未知字段忽略但记 warn。
 - **预设**：`Compact`（bpr=16, size=11, row_pad=0）、`Default`、`Wide`（bpr=32, size=15）、`Analysis`（bpr=16, grouping=4, overlay 全开）、`LowVision`（size=18, row_pad=4, min_contrast=7.0）。
