@@ -10,6 +10,11 @@ authors.workspace = true
 
 [dev-dependencies]
 proptest = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "piece"
+harness = false
 
 [dependencies]
 geode-core = { workspace = true }

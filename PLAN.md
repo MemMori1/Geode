@@ -75,6 +75,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 2026-11-09 | **P1 完成**：建 `docs/errors.toml`（126 码唯一事实来源）+ `xtask docs-errors`（双向校验 + 生成 `crates/geode-core/src/error_codes.rs`）+ CI 加 `--check`；测试 31 → 33 | `d0627c2` |
 | 2026-11-09 | **P5 完成（只读路径）**：7 条 proptest 属性（`ByteRange` 5 + `Buffer::read` 2）；属性测试当场抓出 `clip` 的 `Option` 永远为 `Some` 的假信号，已改为返回 `Self` | 见下一次提交 |
 | 2026-11-09 | **P2 完成**：补齐 `geopatch`/`geojournal` 的 schema 与 `v1.layout.md`（头 32/80 B、帧格式、CRC 覆盖范围），并纠正 23 §3.6 示例里 `payload_len=09` 的排版错误（Overwrite 恒为 16+len） | 见下一次提交 |
+| 2026-11-09 | **T1.2b 基尺**：`benches/piece.rs` 实测 flat Vec 的定位/编辑随 piece 数线性增长（2,048 piece：定位 1.11 µs、编辑 28.2 µs；外推 10 万 piece：54 µs / 1.4 ms，一帧 68 次定位 ≈3.7 ms）。新增 `check_invariants()`（4 类结构错误）与 `PieceCursor`（跨 piece 顺序读）；见 `docs/spikes/T1.2b-baseline.md`。B-tree 未写 | 本提交 |
 | 2026-11-09 | **T1.2a 完成**：piece table 语义层 + 9 条测试（含 200 例随机编辑对拍）；抓到并修掉一个真 bug——`split_at` 在 `at` 恰好是边界时返回 `OutOfRange`，导致"插入后马上删除"必失败。**索引层 T1.2b 未开始** | 本提交 |
 | 2026-11-09 | **T1.1 第一片**：`FileProvider::open_rw/write_at/write_all_at/sync_all`、`geode-buffer::save::save_provider_atomic`（临时文件→fsync→rename→刷目录，保留权限位，失败不留垃圾）；4 条 save 测试 + 3 条 provider 写测试；测试 45→48。**未做**：4 GiB 随机写验收（等 T1.2）、journal | 本提交 |
 | 2026-11-09 | **S3 完成**：`crates/geode-ui` 骨架 + `grid` 几何（乘法定位）+ `benches/paint`；15,360 图元 0.83 ms、文本路径 1,088 格 0.114 ms；结论与"没证明什么"写入 `docs/spikes/S3-painter-throughput.md` | 见下一次提交 |
@@ -112,7 +113,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 指标 | 当前值 | 目标 | 来源 |
 |---|---|---|---|
 | Rust 行数（不含生成） | 2052 | — | `tokei`/`wc` |
-| 测试数 | **57** | M1 出口 ≥80 | `cargo test` |
+| 测试数 | **60** | M1 出口 ≥80 | `cargo test` |
 | 打开 4 GiB 稀疏文件 | 0.013 ms（app 端到端）/ 6.19 µs（bench 纯打开） | <200 ms | `app` / `bench open_4gb` |
 | release 二进制 | 461 KB | <15 MB | `ls -l` |
 | CI | 3 OS 绿 | 保持 | GitHub Actions |

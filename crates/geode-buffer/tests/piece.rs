@@ -3,7 +3,7 @@
 //! 判据只有一条：**任何编辑序列之后，`spans` 拼出来的字节必须与朴素 `Vec<u8>`
 //! 逐字节相等**。索引层可以换、可以优化，这条不能变。
 
-use geode_buffer::piece::{EditError, PieceTable, Span};
+use geode_buffer::piece::{EditError, PieceCursor, PieceTable, Span};
 use proptest::prelude::*;
 
 fn materialize(t: &PieceTable, src: &[u8]) -> Vec<u8> {
@@ -139,6 +139,74 @@ proptest! {
             }
             prop_assert_eq!(t.len(), oracle.len() as u64);
             prop_assert_eq!(materialize(&t, &[]), oracle.clone());
+        }
+    }
+}
+
+#[test]
+fn cursor_spans_cover_exactly_the_table() {
+    let src: Vec<u8> = (0..200u8).collect();
+    let mut t = PieceTable::from_source(200);
+    t.overwrite(10, b"AAAA").unwrap();
+    t.insert(100, b"BBBBBB").unwrap();
+    t.remove(50, 20).unwrap();
+    let want = materialize(&t, &src);
+    let mut got = Vec::new();
+    let mut c = PieceCursor::new(&t, 0);
+    while let Some(s) = c.next_span() {
+        match s {
+            Span::Source { start, len, .. } => {
+                got.extend_from_slice(&src[start as usize..(start + len) as usize])
+            }
+            Span::Literal { bytes, .. } => got.extend_from_slice(bytes),
+        }
+    }
+    assert_eq!(got, want);
+    assert_eq!(got.len() as u64, t.len());
+}
+
+#[test]
+fn cursor_starting_mid_piece() {
+    let t = PieceTable::from_source(10);
+    let mut c = PieceCursor::new(&t, 4);
+    match c.next_span().unwrap() {
+        Span::Source { start, len, .. } => {
+            assert_eq!((start, len), (4, 6));
+        }
+        _ => panic!("应当是 Source"),
+    }
+    assert!(c.next_span().is_none());
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(100))]
+
+    /// 任意编辑序列之后，结构不变量都必须成立（空 piece / 未合并的相邻片 / 总长不符）。
+    #[test]
+    fn invariants_hold_after_random_edits(
+        ops in prop::collection::vec(
+            prop_oneof![
+                (0usize..512, prop::collection::vec(any::<u8>(), 0..16)).prop_map(|(a, d)| (0u8, a, d)),
+                (0usize..512, prop::collection::vec(any::<u8>(), 0..16)).prop_map(|(a, d)| (1u8, a, d)),
+                (0usize..512, 0usize..16).prop_map(|(a, n)| (2u8, a, vec![0u8; n])),
+            ],
+            1..60
+        )
+    ) {
+        let mut t = PieceTable::from_source(4096);
+        for (kind, at, data) in ops {
+            let at = at.min(t.len() as usize) as u64;
+            match kind {
+                0 => t.overwrite(at, &data).unwrap(),
+                1 => t.insert(at, &data).unwrap(),
+                _ => {
+                    let n = (data.len() as u64).min(t.len() - at);
+                    t.remove(at, n).unwrap();
+                }
+            }
+            if let Err(e) = t.check_invariants() {
+                prop_assert!(false, "不变量被破坏：{e}");
+            }
         }
     }
 }

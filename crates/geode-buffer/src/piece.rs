@@ -354,3 +354,100 @@ fn chunks(data: &[u8]) -> Vec<Piece> {
         .map(|c| Piece::Literal(Arc::from(c)))
         .collect()
 }
+
+impl PieceTable {
+    /// 结构不变量自检。**每次编辑后都应在 debug 构建里跑**（测试里全跑）。
+    ///
+    /// 这些不变量错了不会崩，只会让某些偏移读出错误字节——所以必须能自动抓。
+    pub fn check_invariants(&self) -> Result<(), String> {
+        let mut total = 0u64;
+        let mut prev: Option<&Piece> = None;
+        for (i, p) in self.pieces.iter().enumerate() {
+            if p.is_empty() {
+                return Err(format!("第 {i} 个 piece 长度为 0"));
+            }
+            if let Piece::Source { start, len } = p {
+                if start.saturating_add(*len) > self.source_len {
+                    return Err(format!(
+                        "第 {i} 个 Source 越过源长度：{start}+{len} > {}",
+                        self.source_len
+                    ));
+                }
+            }
+            if let Some(q) = prev {
+                match (q, p) {
+                    (Piece::Source { start, len }, Piece::Source { start: s2, .. })
+                        if *start + *len == *s2 =>
+                    {
+                        return Err(format!("第 {i} 个 Source 与上一个连续却未合并"));
+                    }
+                    (Piece::Literal(a), Piece::Literal(b)) if a.len() + b.len() <= MAX_LITERAL => {
+                        return Err(format!("第 {i} 个 Literal 与上一个可合并却未合并"));
+                    }
+                    _ => {}
+                }
+            }
+            total += p.len();
+            prev = Some(p);
+        }
+        if total != self.len {
+            return Err(format!("piece 总长 {total} != 表长度 {}", self.len));
+        }
+        Ok(())
+    }
+}
+
+/// 跨 piece 的顺序游标：从 `at` 开始一段一段往外吐，**不重复扫描前缀**。
+///
+/// 这是 `PieceCursor` 的语义原型；T1.2b 接上 B-tree 后，它内部改成沿树下降，
+/// 但调用方看到的接口不变（04 §4.3）。
+#[derive(Debug)]
+pub struct PieceCursor<'a> {
+    table: &'a PieceTable,
+    at: u64,
+    idx: usize,
+    /// 当前 piece 内已消费的字节。
+    skip: u64,
+}
+
+impl<'a> PieceCursor<'a> {
+    /// 从 `at` 开始。
+    #[must_use]
+    pub fn new(table: &'a PieceTable, at: u64) -> Self {
+        let mut idx = 0;
+        let mut pos = 0u64;
+        while idx < table.pieces.len() && pos + table.pieces[idx].len() <= at {
+            pos += table.pieces[idx].len();
+            idx += 1;
+        }
+        Self {
+            table,
+            at,
+            idx,
+            skip: at.saturating_sub(pos),
+        }
+    }
+
+    /// 下一个段落；到末尾返回 `None`。
+    pub fn next_span(&mut self) -> Option<Span<'a>> {
+        let p = self.table.pieces.get(self.idx)?;
+        let out = match p {
+            Piece::Source { start, .. } => Span::Source {
+                start: start + self.skip,
+                len: p.len() - self.skip,
+                at: self.at,
+            },
+            Piece::Literal(b) => {
+                let s = usize::try_from(self.skip).unwrap_or(0);
+                Span::Literal {
+                    bytes: &b[s..],
+                    at: self.at,
+                }
+            }
+        };
+        self.at += p.len() - self.skip;
+        self.idx += 1;
+        self.skip = 0;
+        Some(out)
+    }
+}

@@ -348,6 +348,7 @@ dependencies = [
 name = "geode-buffer"
 version = "0.0.0"
 dependencies = [
+ "criterion",
  "geode-core",
  "geode-provider",
  "proptest",
