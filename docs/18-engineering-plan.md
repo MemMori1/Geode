@@ -54,7 +54,8 @@ geode/
 ├── .github/workflows/{ci.yml, bench.yml, fuzz.yml, nightly-full.yml, release.yml, docs.yml}
 ├── app/src/{main.rs, cli.rs, app.rs, wiring.rs, recovery.rs, jobs.rs, updates.rs, crash_hooks.rs}
 ├── crates/
-│   ├── geode-core/src/{lib.rs, offset.rs, range.rs, diag.rs, value.rs, ids.rs, budget.rs}
+│   ├── geode-core/src/{lib.rs, offset.rs, range.rs, diag.rs, value.rs, ids.rs, budget.rs,
+│   │                   version.rs, error_codes.rs}   # error_codes.rs 由 xtask docs-errors 生成，勿手改（见 10.2 P1）
 │   ├── geode-buffer/src/{lib.rs, piece.rs, tree.rs, undo.rs, patch.rs, save.rs, journal_sink.rs}
 │   ├── geode-format/src/{lib.rs, version.rs, migrate.rs, detect.rs, geo_ws.rs, geo_proj.rs,
 │   │                   geo_pkg.rs, geo_patch.rs, geo_magic.rs, geo_journal.rs, geo_lock.rs}  # 7 格式的读写与迁移，规范见 23
@@ -81,7 +82,7 @@ geode/
 │                   views/{hex.rs, structure.rs, inspector.rs, diff.rs, disasm.rs,
 │                          search.rs, yara.rs, processor.rs, vis/},
 │                   widget/{mod.rs, splitter.rs, table.rs, dialog.rs}}    # ← 唯一允许 egui/wgpu 的库
-├── docs/  {00-architecture-overview.md … 25-ux-flows-and-copy.md, adr/, img/, book/}
+├── docs/  {00-architecture-overview.md … 26-visual-design.md, adr/, img/{mockup.html, pages/}, book/}
 ├── bench/src/{lib.rs, registry.rs, ...}   # 27 项 bench 的权威清单在 21 §5.2，此处不重复列举
 ├── fuzz/fuzz_targets/{...}                # 25 个 target 的权威清单在 20 §3.4，此处不重复列举
 ├── testdata/{samples/, golden/, corpus/<kind>/<name>/{meta.toml,payload}, vectors/<format>/,
@@ -309,6 +310,48 @@ jobs:
 | geode-disasm | 8 | geode-yara | 8 | geode-core | 8 |
 
 合计 400 人日。**估算纪律**：任何人日超过 20 的任务必须先拆；拆不动的说明设计还没想清，回文档补 §4。
+
+### 10.1 实现状态（滚动更新）
+
+| 里程碑 | 状态 | 已完成 | 未完成 | 证据 |
+|---|---|---|---|---|
+| **M0** | **部分完成**（2026-11-09） | workspace 骨架（resolver 3 / edition 2024 / 统一 lints）、`xtask deps` 四条机器规则（E0101~E0104）、三平台 CI、`geode-core`（Offset/ByteRange/Diag/Value/Ids/Budget/Version）、`geode-provider`（file `pread` + memory，Caps/SizeInfo/ReadReport）、`geode-buffer` 只读骨架（`read`/`version`）、`app` CLI（`--version`/`--help` + hexdump） | `geode-annot` 区间索引、`geode-ui` Painter 自绘网格与比例尺滚动条、M0② 滚动 p99 验收 | 2052 行 Rust、31 测试全绿、`clippy -D warnings` 干净；4 GiB 稀疏文件打开 **0.013 ms**（验收①要求 <200ms）；release 二进制 461 KB；CI 一次 success。提交 `ad5e8f6` → `be7f327` → `09ff4ef` → `8a9ad4b` |
+
+**M0①（打开 4GB <200ms）已达成；M0②（滚动 p99 <25ms）未测**——它需要 `geode-ui` 的网格落地后接 21 §5.2 的 `scroll_p99`，不在读路径上。
+
+### 10.2 M1 前置工件（≈1.4 人日，不占里程碑，但缺了 M1 无法验收）
+
+这五项不是"顺手做"，是 M1 三条验收的**测量手段本身**。顺序建议：错误码表 → schemas → vectors → bench → proptest。
+
+| # | 工件 | 对应验收 | 现状 | 产出物 | 人日 |
+|---|---|---|---|---|---|
+| P1 | **错误码常量表** | 全部（M1 起开始产 `EB` 码） | 代码里只有 `Code::segment()` 段位逻辑，126 个具体码一个没落 | `xtask docs-errors` 扫描 26 份文档的码定义 → 生成 `crates/geode-core/src/error_codes.rs`；CI 双向校验（文档有码代码无码 / 反之）均报错 | 0.3 |
+| P2 | **`schemas/*/v1.json`**（geopatch / geojournal / geows / geoproj） | M1⑤ | **0 个文件** | 由 23 §3 的字段表机械生成，JSON Schema draft 2020-12；随 M1 打 tag | 0.3 |
+| P3 | **`tests/vectors/`** | M1⑤ | 目录不存在 | 每格式：最小样本 + 完整样本 + **≥3 个故意损坏样本**，各配 `.expect.toml` 写明期望的 `EB` 码 | 0.3 |
+| P4 | **bench 骨架** | M1④（保存 1GB >500 MB/s） | 无任何 bench | `benches/` + criterion；先建 6 项（`open_4gb` / `scroll_p99` / `save_1gb` / `read_64k` / `edit_random` / `undo_all`），与 21 §5.2 的 27 项同注册表、`xtask bench audit` 强制一对一 | 0.3 |
+| P5 | **proptest 骨架** | M1②（1 万次随机编辑后撤销，字节相等） | 无 | `crates/geode-buffer/tests/prop_*.rs`：piece table 与 `Vec<u8>` 影子实现对拍（R1 的缓解措施） | 0.2 |
+
+### 10.3 需要 spike 的四个技术未知
+
+在写对应模块**之前**打原型，成本 0.3~0.5 人日/项，避免"写完才发现前提不成立"。
+
+| # | 未知 | 卡住什么 | 判定标准 | 上限 |
+|---|---|---|---|---|
+| S1 | placeholder 4 KiB 下限在真实文件上是否碎片化 | 04 §4.2 的核心假设（"1 字节 literal 与 placeholder 交替"的病态结构） | 1 万个随机编辑序列后统计 piece 数，须满足 `piece ≤ O(C + 改动字节 / 4KiB)` 且内存放大 <2× | 0.5 |
+| S2 | journal 不逐条 fsync 在 `kill -9` 下的实际丢失窗口 | M1③ 的"恢复 N 条修改"文案与 17 §9.3 的诚实度 | 1000 次随机时刻 kill：最大丢失 ≤1 秒编辑、恢复成功率 100%、`Partial` 率 <1% | 0.3 |
+| S3 | 纯 `egui::Painter` 一帧 ~5000 quad 能否稳 60fps | 05 Q8；决定是否需要 wgpu 实例化 callback | 4 GB 文件滚动 30 s，p99 <25 ms，无掉帧 | 0.5 |
+| S4 | `epaint` 字体图集能否按字体局部失效 | CJK 字体加载策略与首启时间 | 切换字体不全量重建图集；首帧到可交互 <1.2 s（M7④ 同口径） | 0.3 |
+
+### 10.4 文档与工件缺口（开工后按需补，不阻塞 M1）
+
+| 缺口 | 何时必须 | 归属 | 估量 |
+|---|---|---|---|
+| **诊断码集中字典**（126 个码、每码一句人话 + 触发条件） | M1 开始产码时 | 新文档 `27-error-code-dictionary.md`（P1 的生成器的输入侧说明） | 200 行，可自动生成 |
+| **CLI 参考手册**（`--patch` / `--dump` / `--json` / 退出码约定） | M1（保存与补丁要能被脚本调） | 新文档 `28-cli-reference.md` | 150 行 |
+| `theme.toml` 与 i18n `<lang>/*.json` 的格式规范 | M3 前 | `23 §3.10` / `§3.11` | 120 行 |
+| 插件 ABI 完整可编译 C 头文件 | M4 前 | `14` 附录 + `include/geode/plugin.h` | 1 文件 |
+| 首批内置内容清单（30 模板 / 5 主题 / 2 语言，具体是哪 30 个） | M5 前（决定冷启动观感与工作量） | `15` 附录或新文档 | 150 行 |
+| `docs/book/` 教程 4 篇（30 分钟上手 / 写第一个 BinSpec / 写插件 / 发模板） | 发布前 | 新建 | 400 行 |
 
 ## 11 风险登记册
 
