@@ -40,7 +40,7 @@ M0 的读路径与骨架已落地（4 GiB 打开 0.013 ms、31 测试、CI 绿�
 | P5 | proptest 骨架（piece table vs `Vec<u8>` 影子对拍） | 0.2 | 随机操作序列 1 万次，双实现对拍无差异（此时 buffer 还没有编辑，先锁只读读路径） | `[x]` 只读路径完成：`ByteRange` 5 条 + `Buffer::read` 2 条属性；编辑对拍随 T1.4/T1.5 接入 |
 | S1 | spike：placeholder 4 KiB 下限是否碎片化 | 0.5 | 1 万次随机编辑后 `piece ≤ O(C + 改动字节/4KiB)`、内存放大 <2× | `[ ]` |
 | S2 | spike：journal 不逐条 fsync 在 `kill -9` 下的丢帧窗口 | 0.3 | 1000 次随机时刻 kill：最大丢失 ≤1 秒编辑、恢复成功率 100% | `[ ]` |
-| S3 | spike：纯 `Painter` 5000 quad/帧 | 0.5 | 4 GB 文件滚动 30 s，p99 <25 ms | `[ ]` |
+| S3 | 纯 `Painter` 5000 quad/帧 | 0.4 | 一屏 ~5000 图元整帧 <16.6 ms | `[x]` **通过**：15,360 图元 0.83 ms（余量 20×）；见 `docs/spikes/S3-painter-throughput.md`。不含 GPU 提交与命中测试 |
 | S4 | spike：`epaint` 字体图集按字体局部失效 | 0.3 | 换字体不全量重建；首帧到可交互 <1.2 s | `[ ]` |
 
 **顺序**：P1 → P2 → P3 → P5 → P4 → S1 → S2 → S3 → S4。
@@ -75,6 +75,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 2026-11-09 | **P1 完成**：建 `docs/errors.toml`（126 码唯一事实来源）+ `xtask docs-errors`（双向校验 + 生成 `crates/geode-core/src/error_codes.rs`）+ CI 加 `--check`；测试 31 → 33 | `d0627c2` |
 | 2026-11-09 | **P5 完成（只读路径）**：7 条 proptest 属性（`ByteRange` 5 + `Buffer::read` 2）；属性测试当场抓出 `clip` 的 `Option` 永远为 `Some` 的假信号，已改为返回 `Self` | 见下一次提交 |
 | 2026-11-09 | **P2 完成**：补齐 `geopatch`/`geojournal` 的 schema 与 `v1.layout.md`（头 32/80 B、帧格式、CRC 覆盖范围），并纠正 23 §3.6 示例里 `payload_len=09` 的排版错误（Overwrite 恒为 16+len） | 见下一次提交 |
+| 2026-11-09 | **S3 完成**：`crates/geode-ui` 骨架 + `grid` 几何（乘法定位）+ `benches/paint`；15,360 图元 0.83 ms、文本路径 1,088 格 0.114 ms；结论与"没证明什么"写入 `docs/spikes/S3-painter-throughput.md` | 见下一次提交 |
 | 2026-11-09 | **P3 结构完成**：4 个格式 16 条向量（12 条损坏，覆盖 EB001/EB002/EB004/EB009/EB010/EB011/EB012/EB013），`xtask vectors-check`（负向测试：删一个样本 ⇒ 退出码 1） | 同上 |
 | 2026-11-09 | **P2 部分**：写 `schemas/geows/v1.json`、`schemas/geoproj/v1.json` + 两份 `CHANGELOG.md`；新增 `cargo xtask schema-check` 并接入 CI（负向测试：塞一个 `format` ⇒ 退出码 1，报两处） | 见下一次提交 |
 | 2026-11-09 | **P4 部分**：新建 `bench/` crate（criterion）+ `M1_BENCHES` 注册表（6 项，4 项写明阻塞任务）；`open_4gb` 6.19 µs、`read_64k` 889 ns（内存源，仅回归基线） | 同上 |

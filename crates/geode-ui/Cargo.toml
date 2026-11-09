@@ -1,0 +1,23 @@
+[package]
+name = "geode-ui"
+description = "Geode 的界面层：hex 网格几何、Painter 自绘、主题与 i18n 装配（M0 只做 S3 spike）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+geode-core = { workspace = true }
+egui = "0.32"
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "paint"
+harness = false
+
+[lints]
+workspace = true
