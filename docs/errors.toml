@@ -1,0 +1,819 @@
+# Geode 诊断码登记表（唯一事实来源）
+#
+# 规则（00 §12）：一码一义、发布后只增不改、每条必须能回链到 ByteRange。
+# `cargo xtask docs-errors` 会：① 校验本表与 docs/ 里出现的码双向一致；
+# ② 生成 crates/geode-core/src/error_codes.rs。手改生成文件无效，CI 会打回。
+#
+# severity: info | warning | error | fatal（当前按段默认 error，逐码复核随 27 文档进行）
+# title:    一句话释义；留空表示尚未写，27 文档补齐后 CI 统计会降到 0
+
+[[code]]
+id = "E0001"
+segment = "E0"
+owner = "geode-xtask"
+severity = "error"
+
+[[code]]
+id = "E0101"
+segment = "E0"
+owner = "geode-xtask"
+severity = "error"
+
+[[code]]
+id = "E0102"
+segment = "E0"
+owner = "geode-xtask"
+severity = "error"
+
+[[code]]
+id = "E0103"
+segment = "E0"
+owner = "geode-xtask"
+severity = "error"
+
+[[code]]
+id = "E0104"
+segment = "E0"
+owner = "geode-xtask"
+severity = "error"
+
+[[code]]
+id = "E0105"
+segment = "E0"
+owner = "geode-xtask"
+severity = "error"
+
+[[code]]
+id = "E0120"
+segment = "E0"
+owner = "geode-xtask"
+severity = "error"
+title = "主题 `nord` 缺少 3 个颜色定义：`layer.ai`、`hex.null-byte`、`severity.info`。"
+
+[[code]]
+id = "E0130"
+segment = "E0"
+owner = "geode-xtask"
+severity = "error"
+title = "字体 `MyMono.ttf` 不是等宽字体：`i` 与 `W` 宽度相差 31%。"
+
+[[code]]
+id = "E1001"
+segment = "E1"
+owner = "geode-bspec"
+severity = "error"
+title = "enum value not in declaration"
+
+[[code]]
+id = "E1002"
+segment = "E1"
+owner = "geode-bspec"
+severity = "error"
+title = "invalid byte sequence for encoding"
+
+[[code]]
+id = "E1004"
+segment = "E1"
+owner = "geode-bspec"
+severity = "error"
+title = "偏移 0x1000 的 magic 不匹配：期望 `50 4B 03 04`，实际 `00 00 00 00`。"
+
+[[code]]
+id = "E1005"
+segment = "E1"
+owner = "geode-bspec"
+severity = "error"
+title = "assertion failed"
+
+[[code]]
+id = "E1006"
+segment = "E1"
+owner = "geode-bspec"
+severity = "error"
+title = "数据不匹配·断言：`#[assert]` 或 `assert()` 失败（**不归 E5**，E5 只表示前置上下文缺失）"
+
+[[code]]
+id = "E2001"
+segment = "E2"
+owner = "geode-bspec"
+severity = "error"
+title = "模板在第 3 个循环第 412 次迭代处耗尽执行预算（1 秒）。"
+
+[[code]]
+id = "E2002"
+segment = "E2"
+owner = "geode-bspec"
+severity = "error"
+title = "wall time budget exceeded"
+
+[[code]]
+id = "E2003"
+segment = "E2"
+owner = "geode-bspec"
+severity = "error"
+title = "recursion/depth limit reached"
+
+[[code]]
+id = "E2004"
+segment = "E2"
+owner = "geode-bspec"
+severity = "error"
+title = "output size limit exceeded"
+
+[[code]]
+id = "E2005"
+segment = "E2"
+owner = "geode-bspec"
+severity = "error"
+title = "cancelled by user"
+
+[[code]]
+id = "E3001"
+segment = "E3"
+owner = "geode-bspec"
+severity = "error"
+title = "read out of bounds"
+
+[[code]]
+id = "E3002"
+segment = "E3"
+owner = "geode-bspec"
+severity = "error"
+title = "resume target outside file"
+
+[[code]]
+id = "E3003"
+segment = "E3"
+owner = "geode-bspec"
+severity = "error"
+title = "allocation exceeds limit"
+
+[[code]]
+id = "E3004"
+segment = "E3"
+owner = "geode-bspec"
+severity = "error"
+title = "division by zero"
+
+[[code]]
+id = "E3010"
+segment = "E3"
+owner = "geode-bspec"
+severity = "error"
+
+[[code]]
+id = "E4001"
+segment = "E4"
+owner = "geode-bspec"
+severity = "error"
+title = "unexpected token"
+
+[[code]]
+id = "E4002"
+segment = "E4"
+owner = "geode-bspec"
+severity = "error"
+title = "type mismatch"
+
+[[code]]
+id = "E4003"
+segment = "E4"
+owner = "geode-bspec"
+severity = "error"
+title = "undefined symbol"
+
+[[code]]
+id = "E4004"
+segment = "E4"
+owner = "geode-bspec"
+severity = "error"
+title = "fixed struct size mismatch"
+
+[[code]]
+id = "E4007"
+segment = "E4"
+owner = "geode-bspec"
+severity = "error"
+
+[[code]]
+id = "E5001"
+segment = "E5"
+owner = "geode-bspec"
+severity = "error"
+title = "image_base not provided"
+
+[[code]]
+id = "E5002"
+segment = "E5"
+owner = "geode-bspec"
+severity = "error"
+title = "required context missing"
+
+[[code]]
+id = "E6001"
+segment = "E6"
+owner = "geode-provider"
+severity = "error"
+title = "无法读取 `/dev/rdisk2`：需要管理员权限。"
+
+[[code]]
+id = "E6002"
+segment = "E6"
+owner = "geode-provider"
+severity = "error"
+title = "目标进程 4812 已退出，内存不再可读。"
+
+[[code]]
+id = "E6003"
+segment = "E6"
+owner = "geode-provider"
+severity = "error"
+
+[[code]]
+id = "E6004"
+segment = "E6"
+owner = "geode-provider"
+severity = "error"
+
+[[code]]
+id = "E6005"
+segment = "E6"
+owner = "geode-provider"
+severity = "error"
+
+[[code]]
+id = "E6006"
+segment = "E6"
+owner = "geode-provider"
+severity = "error"
+
+[[code]]
+id = "E7102"
+segment = "E7"
+owner = "geode-search"
+severity = "error"
+title = "无法搜索 `?? ?? ??`：模式里没有固定字节。"
+
+[[code]]
+id = "E7103"
+segment = "E7"
+owner = "geode-search"
+severity = "error"
+title = "正则不支持反向引用 `\\1` 与环视 `(?=)`。"
+
+[[code]]
+id = "E7104"
+segment = "E7"
+owner = "geode-search"
+severity = "error"
+
+[[code]]
+id = "E7105"
+segment = "E7"
+owner = "geode-search"
+severity = "error"
+
+[[code]]
+id = "E8001"
+segment = "E8"
+owner = "geode-viz"
+severity = "error"
+
+[[code]]
+id = "E8002"
+segment = "E8"
+owner = "geode-viz"
+severity = "error"
+
+[[code]]
+id = "E8003"
+segment = "E8"
+owner = "geode-viz"
+severity = "error"
+
+[[code]]
+id = "E8004"
+segment = "E8"
+owner = "geode-viz"
+severity = "error"
+title = "无法显示图片：头部声明 60000×60000 像素。"
+
+[[code]]
+id = "E8005"
+segment = "E8"
+owner = "geode-viz"
+severity = "error"
+title = "可视化器 2 秒内未完成解码，当前显示缩略图。"
+
+[[code]]
+id = "E8006"
+segment = "E8"
+owner = "geode-viz"
+severity = "error"
+
+[[code]]
+id = "E8007"
+segment = "E8"
+owner = "geode-viz"
+severity = "error"
+
+[[code]]
+id = "E9001"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+
+[[code]]
+id = "E9002"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+
+[[code]]
+id = "E9003"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+title = "插件 `hexdecoder` 需要宿主 ABI 2.x，当前为 1.4。"
+
+[[code]]
+id = "E9004"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+
+[[code]]
+id = "E9005"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+
+[[code]]
+id = "E9006"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+
+[[code]]
+id = "E9007"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+title = "插件 `quickstat` 解析时崩溃，本会话已禁用。"
+
+[[code]]
+id = "E9008"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+
+[[code]]
+id = "E9009"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+
+[[code]]
+id = "E9010"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+
+[[code]]
+id = "E9011"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+
+[[code]]
+id = "E9012"
+segment = "E9"
+owner = "geode-plugin-host"
+severity = "error"
+
+[[code]]
+id = "EA001"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+title = "无法安装 `tpl.zip 1.4.0`：文件摘要与索引登记不一致。"
+
+[[code]]
+id = "EA002"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+title = "无法安装 `theme.nord 1.2.0`：签名校验失败。"
+
+[[code]]
+id = "EA003"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+title = "tpl.xyz 0.3.0` 的签名者 `ed25519:deadbeef` 不在受信列表。"
+
+[[code]]
+id = "EA004"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA005"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA006"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA007"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA010"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA012"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA020"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA021"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA101"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA102"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA103"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA105"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA106"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EA301"
+segment = "EA"
+owner = "geode-content"
+severity = "error"
+
+[[code]]
+id = "EB001"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB002"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB003"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB004"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB005"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB006"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB007"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB008"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB009"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB010"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB011"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB012"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB013"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB014"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB015"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB016"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB017"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB018"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB019"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB020"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB021"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB022"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB023"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB024"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB025"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB026"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB027"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB028"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB029"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "全部"
+
+[[code]]
+id = "EB030"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+
+[[code]]
+id = "EB101"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "源语法无法解析"
+
+[[code]]
+id = "EB102"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "源超限（1MB / 40k 行）"
+
+[[code]]
+id = "EB201"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "构造不可映射（内嵌运行时/副作用宏）"
+
+[[code]]
+id = "EB202"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "类型依赖成环"
+
+[[code]]
+id = "EB203"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "游标顺序不可重建（引用未来字段）"
+
+[[code]]
+id = "EB301"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "产物未过 L1 编译"
+
+[[code]]
+id = "EB302"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "产物未过 L2 执行"
+
+[[code]]
+id = "EB303"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "不变量未过（I4 覆盖/I5 长度自洽）"
+
+[[code]]
+id = "EB401"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "origin` 缺失或不完整"
+
+[[code]]
+id = "EB402"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "命中 GPL/AGPL/LGPL 且未声明权利"
+
+[[code]]
+id = "EB403"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "local-only` 产物尝试 `--pack"
+
+[[code]]
+id = "EB404"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "与已知 GPL 语料 5-gram 相似度 > 0.6"
+
+[[code]]
+id = "EB501"
+segment = "EB"
+owner = "geode-format"
+severity = "error"
+title = "CLI IO / 目标已存在且无 `--force"
+
+[[code]]
+id = "EC001"
+segment = "EC"
+owner = "geode-core"
+severity = "error"
+title = "安全策略拒绝（需用户显式放行）"
+
+[[code]]
+id = "EC002"
+segment = "EC"
+owner = "geode-core"
+severity = "error"
+title = "路径越出白名单根或被判为不安全条目"
+
+[[code]]
+id = "EC003"
+segment = "EC"
+owner = "geode-core"
+severity = "error"
+title = "输入声明的尺寸/数量超上限（**拒绝**，非失败）"
+
+[[code]]
+id = "EC004"
+segment = "EC"
+owner = "geode-core"
+severity = "error"
+title = "破坏性操作缺少二次确认（程序性错误，仅内部）"
+
+[[code]]
+id = "EC005"
+segment = "EC"
+owner = "geode-core"
+severity = "error"
+title = "将在写出物中发现凭据类字段"
+
+[[code]]
+id = "EC006"
+segment = "EC"
+owner = "geode-core"
+severity = "error"
+title = "远程目标未经用户同意（`providers` 段静默连网）"
+
+[[code]]
+id = "EC007"
+segment = "EC"
+owner = "geode-core"
+severity = "error"
+title = "预算/配额由**输入**而非用户设置提供（程序性错误）"
+

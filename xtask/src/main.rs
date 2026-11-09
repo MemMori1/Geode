@@ -8,6 +8,7 @@
 #![deny(missing_docs)]
 
 mod deps;
+mod docserrors;
 
 use std::process::ExitCode;
 
@@ -15,18 +16,20 @@ fn main() -> ExitCode {
     let task = std::env::args().nth(1);
     match task.as_deref() {
         Some("deps") => deps::run(),
+        Some("docs-errors") => docserrors::run(std::env::args().any(|a| a == "--check")),
         Some("-h" | "--help" | "help") | None => {
             println!(
                 "geode xtask\n\n\
                  用法: cargo xtask <task>\n\n\
                  任务:\n  \
-                   deps    校验 crate 依赖方向与 GUI 污染（18 §3.2，码 E0101~E0104）\n\n\
+                   deps          校验 crate 依赖方向与 GUI 污染（18 §3.2，码 E0101~E0104）\n  \
+                   docs-errors   校验 docs/errors.toml 与文档的双向一致，并生成 error_codes.rs\n                        --check 只校验不写盘（CI 用）\n\n\
                  环境: 需在仓库根目录运行"
             );
             ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("未知任务 `{other}`，可用: deps");
+            eprintln!("未知任务 `{other}`，可用: deps、docs-errors");
             ExitCode::FAILURE
         }
     }

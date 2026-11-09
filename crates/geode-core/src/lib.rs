@@ -14,6 +14,7 @@
 
 pub mod budget;
 pub mod diag;
+pub mod error_codes;
 pub mod ids;
 pub mod offset;
 pub mod range;
