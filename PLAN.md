@@ -52,7 +52,7 @@ M0 的读路径与骨架已落地（4 GiB 打开 0.013 ms、31 测试、CI 绿�
 
 | ID | 任务 | 人日 | 验收 | 状态 |
 |---|---|---|---|---|
-| T1.1 | 写路径：`FileProvider` 可写（`pwrite`）+ `Caps::READ_WRITE_STABLE` + 短写重试 + `fsync` 语义 | 4 | 在 4 GiB 文件随机位置写 1 MiB，回读逐字节相等 | `[ ]` |
+| T1.1 | 写路径：`FileProvider` 可写（`pwrite`）+ `Caps::READ_WRITE_STABLE` + 短写重试 + `fsync` 语义 | 4 | 在 4 GiB 文件随机位置写 1 MiB，回读逐字节相等 | `[~]` **2/4**：`open_rw`/`write_at`/`write_all_at`（短写重试，0 字节写判错）/`sync_all`/`caps` 随句柄变 RW 已完成；**原子保存** `save_provider_atomic`（同目录临时文件 + fsync + rename + 刷目录 + 权限位保留 + 失败清理）已完成并有 4 条测试；**4 GiB 随机写 1 MiB 的验收尚未跑**（缺 B-tree，见 T1.2）；journal 未做 |
 | T1.2 | 计数 B-tree piece table：`Piece`(32B) / 叶 64 piece / fanout 64 / split / join / `PieceCursor` | 8 | 跨 100 piece 连续读 O(log N + 100)；与 `Vec<u8>` 对拍 | `[ ]` |
 | T1.3 | placeholder（≥4 KiB 阈值、R1 降级 / R2 禁升级 / R3 相邻合并）+ lazy file loading | 5 | 打开 4 GiB **不读一个字节**；首次滚动才填 | `[ ]` |
 | T1.4 | 覆盖编辑：`Overwrite` 默认、EOF 追加、nibble 400 ms 分组、`EditOp` 日志 | 4 | 输入 `41 42` 后字节变为 `41 42`，撤销一次回到原值 | `[ ]` |
@@ -75,6 +75,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 2026-11-09 | **P1 完成**：建 `docs/errors.toml`（126 码唯一事实来源）+ `xtask docs-errors`（双向校验 + 生成 `crates/geode-core/src/error_codes.rs`）+ CI 加 `--check`；测试 31 → 33 | `d0627c2` |
 | 2026-11-09 | **P5 完成（只读路径）**：7 条 proptest 属性（`ByteRange` 5 + `Buffer::read` 2）；属性测试当场抓出 `clip` 的 `Option` 永远为 `Some` 的假信号，已改为返回 `Self` | 见下一次提交 |
 | 2026-11-09 | **P2 完成**：补齐 `geopatch`/`geojournal` 的 schema 与 `v1.layout.md`（头 32/80 B、帧格式、CRC 覆盖范围），并纠正 23 §3.6 示例里 `payload_len=09` 的排版错误（Overwrite 恒为 16+len） | 见下一次提交 |
+| 2026-11-09 | **T1.1 第一片**：`FileProvider::open_rw/write_at/write_all_at/sync_all`、`geode-buffer::save::save_provider_atomic`（临时文件→fsync→rename→刷目录，保留权限位，失败不留垃圾）；4 条 save 测试 + 3 条 provider 写测试；测试 45→48。**未做**：4 GiB 随机写验收（等 T1.2）、journal | 本提交 |
 | 2026-11-09 | **S3 完成**：`crates/geode-ui` 骨架 + `grid` 几何（乘法定位）+ `benches/paint`；15,360 图元 0.83 ms、文本路径 1,088 格 0.114 ms；结论与"没证明什么"写入 `docs/spikes/S3-painter-throughput.md` | 见下一次提交 |
 | 2026-11-09 | **P3 结构完成**：4 个格式 16 条向量（12 条损坏，覆盖 EB001/EB002/EB004/EB009/EB010/EB011/EB012/EB013），`xtask vectors-check`（负向测试：删一个样本 ⇒ 退出码 1） | 同上 |
 | 2026-11-09 | **P2 部分**：写 `schemas/geows/v1.json`、`schemas/geoproj/v1.json` + 两份 `CHANGELOG.md`；新增 `cargo xtask schema-check` 并接入 CI（负向测试：塞一个 `format` ⇒ 退出码 1，报两处） | 见下一次提交 |
@@ -110,7 +111,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 指标 | 当前值 | 目标 | 来源 |
 |---|---|---|---|
 | Rust 行数（不含生成） | 2052 | — | `tokei`/`wc` |
-| 测试数 | **40** | M1 出口 ≥80 | `cargo test` |
+| 测试数 | **48** | M1 出口 ≥80 | `cargo test` |
 | 打开 4 GiB 稀疏文件 | 0.013 ms（app 端到端）/ 6.19 µs（bench 纯打开） | <200 ms | `app` / `bench open_4gb` |
 | release 二进制 | 461 KB | <15 MB | `ls -l` |
 | CI | 3 OS 绿 | 保持 | GitHub Actions |

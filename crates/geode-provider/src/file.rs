@@ -19,6 +19,7 @@ pub struct FileProvider {
     path: PathBuf,
     file: File,
     len: u64,
+    writable: bool,
 }
 
 impl FileProvider {
@@ -46,7 +47,98 @@ impl FileProvider {
             path,
             file,
             len,
+            writable: false,
         })
+    }
+
+    /// 以读写方式打开（覆盖编辑 / 就地保存用，见 04 §4.6）。
+    ///
+    /// 注意：**可写句柄绝不 mmap**（04 附录 A：Windows 映射期间不能 truncate，
+    /// 且外部写入会让映射内容与页缓存不一致）。
+    pub fn open_rw(path: impl AsRef<Path>) -> Result<Self, ProviderError> {
+        let path = path.as_ref().to_path_buf();
+        let file = std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&path)
+            .map_err(|e| match e.kind() {
+                io::ErrorKind::PermissionDenied => ProviderError::Permission {
+                    detail: format!("{path:?}: {e}（需要写权限）"),
+                },
+                _ => ProviderError::Io(e),
+            })?;
+        let meta = file.metadata()?;
+        if meta.is_dir() {
+            return Err(ProviderError::BadFormat {
+                detail: format!("{path:?} 是目录，不是文件"),
+            });
+        }
+        let len = meta.len();
+        let id = ProviderId::new(hash_path(&path));
+        Ok(Self {
+            id,
+            path,
+            file,
+            len,
+            writable: true,
+        })
+    }
+
+    /// 是否以读写方式打开。
+    pub fn is_writable(&self) -> bool {
+        self.writable
+    }
+
+    /// 在 `at` 处写入（`pwrite`，不移动文件游标，见 04 §4.1）。
+    ///
+    /// 返回实际写入字节数；短写是合法的（00 §5.1 铁律），调用方必须循环直到写完。
+    pub fn write_at(&self, at: Offset, buf: &[u8]) -> Result<usize, ProviderError> {
+        if !self.writable {
+            return Err(ProviderError::Permission {
+                detail: format!("{:?} 以只读方式打开", self.path),
+            });
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::FileExt;
+            Ok(self.file.write_at(buf, at.get())?)
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::FileExt;
+            Ok(self.file.seek_write(buf, at.get())?)
+        }
+    }
+
+    /// 循环写直到写完（短写重试，00 §5.1 铁律）。
+    ///
+    /// `write_at` 允许短写，调用方不该假设一次写完；返回 0 且仍未写完视为错误，
+    /// 否则会变成死循环。
+    pub fn write_all_at(&self, at: Offset, buf: &[u8]) -> Result<(), ProviderError> {
+        let mut done = 0usize;
+        while done < buf.len() {
+            let here = at.checked_add(done as u64).ok_or_else(|| {
+                ProviderError::Io(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "写入偏移溢出 u64",
+                ))
+            })?;
+            let n = self.write_at(here, &buf[done..])?;
+            if n == 0 {
+                return Err(ProviderError::Io(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    format!("{at:?}+{done} 处写入返回 0"),
+                )));
+            }
+            done += n;
+        }
+        Ok(())
+    }
+
+    /// 把文件内容与元数据刷到盘（`fsync`）。保存事务的第二步（04 §4.6）。
+    pub fn sync_all(&self) -> Result<(), ProviderError> {
+        self.file.sync_all()?;
+        Ok(())
     }
 
     /// 路径。
@@ -79,7 +171,11 @@ impl Provider for FileProvider {
     }
 
     fn caps(&self) -> Caps {
-        Caps::READ_ONLY_STABLE
+        if self.writable {
+            Caps::READ_WRITE_STABLE
+        } else {
+            Caps::READ_ONLY_STABLE
+        }
     }
 
     fn size(&self) -> SizeInfo {
