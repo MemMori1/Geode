@@ -36,8 +36,8 @@ M0 的读路径与骨架已落地（4 GiB 打开 0.013 ms、31 测试、CI 绿�
 | P1 | 错误码登记表 + `xtask docs-errors`（双向校验 + 生成 `error_codes.rs`） | 0.3 | `cargo xtask docs-errors --check` 绿；126 码全登记；生成文件进 CI | `[x]` 2026-11-09（释义 54/126，余 72 条随 27 文档补） |
 | P2 | `schemas/*/v1.json` ×4（geopatch / geojournal / geows / geoproj） | 0.3 | 四个 schema 能被 `jsonschema` 校验器加载；与 23 §3 的字段表逐字段对齐 | `[ ]` |
 | P3 | `tests/vectors/`（每格式最小 + 完整 + ≥3 损坏样本 + `.expect.toml`） | 0.3 | 每条损坏样本在 `geode-format` 的解析器里产出**指定的** `EB` 码 | `[ ]` |
-| P4 | bench 骨架（criterion，先 6 项：open_4gb / scroll_p99 / save_1gb / read_64k / edit_random / undo_all） | 0.3 | `cargo bench` 能跑；`xtask bench audit` 认得出 6 项与 00 §7 的对应关系 | `[ ]` |
-| P5 | proptest 骨架（piece table vs `Vec<u8>` 影子对拍） | 0.2 | 随机操作序列 1 万次，双实现对拍无差异（此时 buffer 还没有编辑，先锁只读读路径） | `[ ]` |
+| P4 | bench 骨架（criterion，先 6 项：open_4gb / scroll_p99 / save_1gb / read_64k / edit_random / undo_all） | 0.3 | `cargo bench` 能跑；`xtask bench audit` 认得出 6 项与 00 §7 的对应关系 | `[~]` 2/6 实现（open_4gb 6.19 µs、read_64k 889 ns）；registry 已登记 4 项阻塞原因 |
+| P5 | proptest 骨架（piece table vs `Vec<u8>` 影子对拍） | 0.2 | 随机操作序列 1 万次，双实现对拍无差异（此时 buffer 还没有编辑，先锁只读读路径） | `[x]` 只读路径完成：`ByteRange` 5 条 + `Buffer::read` 2 条属性；编辑对拍随 T1.4/T1.5 接入 |
 | S1 | spike：placeholder 4 KiB 下限是否碎片化 | 0.5 | 1 万次随机编辑后 `piece ≤ O(C + 改动字节/4KiB)`、内存放大 <2× | `[ ]` |
 | S2 | spike：journal 不逐条 fsync 在 `kill -9` 下的丢帧窗口 | 0.3 | 1000 次随机时刻 kill：最大丢失 ≤1 秒编辑、恢复成功率 100% | `[ ]` |
 | S3 | spike：纯 `Painter` 5000 quad/帧 | 0.5 | 4 GB 文件滚动 30 s，p99 <25 ms | `[ ]` |
@@ -72,7 +72,9 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 日期 | 做了什么 | 证据 |
 |---|---|---|
 | 2026-11-09 | 文档收口：M0 实现状态、M1 前置工件、4 项 spike 写进 `18 §10.1~10.4`；README 增「开工前清单」 | `7d0d7a2` |
-| 2026-11-09 | **P1 完成**：建 `docs/errors.toml`（126 码唯一事实来源）+ `xtask docs-errors`（双向校验 + 生成 `crates/geode-core/src/error_codes.rs`）+ CI 加 `--check`；测试 31 → 33 | 见下一次提交 |
+| 2026-11-09 | **P1 完成**：建 `docs/errors.toml`（126 码唯一事实来源）+ `xtask docs-errors`（双向校验 + 生成 `crates/geode-core/src/error_codes.rs`）+ CI 加 `--check`；测试 31 → 33 | `d0627c2` |
+| 2026-11-09 | **P5 完成（只读路径）**：7 条 proptest 属性（`ByteRange` 5 + `Buffer::read` 2）；属性测试当场抓出 `clip` 的 `Option` 永远为 `Some` 的假信号，已改为返回 `Self` | 见下一次提交 |
+| 2026-11-09 | **P4 部分**：新建 `bench/` crate（criterion）+ `M1_BENCHES` 注册表（6 项，4 项写明阻塞任务）；`open_4gb` 6.19 µs、`read_64k` 889 ns（内存源，仅回归基线） | 同上 |
 
 ---
 
@@ -84,6 +86,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | D-002 | `docs/errors.toml` 是诊断码唯一事实来源，**不接受**从文档正文反向抽取当权威 | 文档是散文，抽取不可靠；宁可让 CI 逼着两边对齐 | 2026-11-09 |
 | D-003 | 生成的 `error_codes.rs` 允许 `#[rustfmt::skip]` | 126 个常量一行一个才好 diff；被 rustfmt 压成行会毁掉可读性 | 2026-11-09 |
 | D-004 | 错误码 `severity` 暂按段默认 `error`，逐码复核随 27 文档做 | 先要"码存在且一致"，再要"分级准确"；反过来会拖住 P1 | 2026-11-09 |
+| D-005 | `ByteRange::clip` 从 `Option<Self>` 改为 `Self` | 属性测试证明 `Option` **永远是 `Some`**（`min()` 不会失败），这种"看起来会失败其实不会"的签名会诱导调用方写无效分支；短读语义统一为空区间 | 2026-11-09 |
 
 ---
 
@@ -103,12 +106,12 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 指标 | 当前值 | 目标 | 来源 |
 |---|---|---|---|
 | Rust 行数（不含生成） | 2052 | — | `tokei`/`wc` |
-| 测试数 | **33** | M1 出口 ≥80 | `cargo test` |
-| 打开 4 GiB 稀疏文件 | 0.013 ms | <200 ms | `app` 实测 |
+| 测试数 | **40** | M1 出口 ≥80 | `cargo test` |
+| 打开 4 GiB 稀疏文件 | 0.013 ms（app 端到端）/ 6.19 µs（bench 纯打开） | <200 ms | `app` / `bench open_4gb` |
 | release 二进制 | 461 KB | <15 MB | `ls -l` |
 | CI | 3 OS 绿 | 保持 | GitHub Actions |
 | 诊断码登记 | 126 / 释义 54 | 126 / 126 | `xtask docs-errors` |
-| `00 §7` 性能条目达标数 | 0 / 19（只有"打开"一项有实测） | 19/19（M7） | `xtask bench` |
+| `00 §7` 性能条目达标数 | 1 / 19（打开；read_64k 是内存源基线不算数） | 19/19（M7） | `cargo bench` |
 
 ---
 

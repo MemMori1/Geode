@@ -1,0 +1,29 @@
+[package]
+name = "geode-bench"
+description = "Geode 的性能基准（21 §5.2 的 27 项，先实现能测的部分）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+
+[dependencies]
+geode-core = { workspace = true }
+geode-provider = { workspace = true }
+geode-buffer = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "open"
+harness = false
+
+[[bench]]
+name = "read"
+harness = false
+
+[lints]
+workspace = true

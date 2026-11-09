@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["app", "xtask", "crates/*"]
+members = ["app", "xtask", "bench", "crates/*"]
 
 [workspace.package]
 version = "0.0.0"
@@ -13,9 +13,12 @@ authors = ["Geode contributors"]
 [workspace.dependencies]
 geode-core = { path = "crates/geode-core" }
 geode-provider = { path = "crates/geode-provider" }
+geode-buffer = { path = "crates/geode-buffer" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"
 toml = "0.9"
+proptest = "1"
+criterion = { version = "0.5", features = ["html_reports"] }
 
 [workspace.lints.rust]
 missing_docs = "warn"

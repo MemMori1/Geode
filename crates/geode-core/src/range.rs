@@ -67,14 +67,17 @@ impl ByteRange {
         self.start.get() <= at.get() && at.get() < self.end.get()
     }
 
-    /// 把区间裁到 `[0, limit)` 内；完全落在外面时返回 `None`。
+    /// 把区间裁到 `[0, limit)` 内。
     ///
-    /// 越界读**不报错**，而是被裁剪后返回短读——见 00 §5.1 的铁律"短读合法"。
+    /// 完全落在外面时返回**空区间**（`start == end == limit`），不返回 `None`：
+    /// 调用方无须区分"读到 EOF"与"越界"，两者都表现为短读——见 00 §5.1 的铁律"短读合法"。
+    /// （早期版本返回 `Option`，但该 `Option` 永远为 `Some`，属于会误导调用方的假信号。）
     #[inline]
-    pub fn clip(self, limit: u64) -> Option<Self> {
-        let start = self.start.get().min(limit);
-        let end = self.end.get().min(limit);
-        Self::new(Offset::new(start), Offset::new(end))
+    pub fn clip(self, limit: u64) -> Self {
+        Self {
+            start: Offset::new(self.start.get().min(limit)),
+            end: Offset::new(self.end.get().min(limit)),
+        }
     }
 
     /// 交集；无交集返回 `None`（空交集也返回 `None`）。
@@ -146,12 +149,9 @@ mod tests {
 
     #[test]
     fn clip_truncates_instead_of_erroring() {
-        assert_eq!(r(10, 20).clip(15), Some(r(10, 15)));
-        assert_eq!(
-            r(30, 40).clip(15),
-            Some(ByteRange::empty_at(Offset::new(15)))
-        );
-        assert_eq!(r(30, 40).clip(15).unwrap().len(), 0);
+        assert_eq!(r(10, 20).clip(15), r(10, 15));
+        assert_eq!(r(30, 40).clip(15), ByteRange::empty_at(Offset::new(15)));
+        assert_eq!(r(30, 40).clip(15).len(), 0);
     }
 
     #[test]
