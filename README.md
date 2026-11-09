@@ -42,6 +42,7 @@ ImHex 证明了"hex 视图 + 结构描述语言"这条路能做成产品，但�
 | 25 | [交互流程与文案](docs/25-ux-flows-and-copy.md) | 6 条核心旅程、ASCII 线框、文档状态机、术语表、错误话术三段式 | 只读降级优先于拒绝打开；长任务永不阻塞输入且可取消 |
 | 26 | [视觉设计](docs/26-visual-design.md) | 4dp 栅格、五级字阶、hex 单元格乘法几何、四态、48 图标、四套主题完整色表 | 否决斑马纹（与 `Value` 层抢通道）；hex 列宽永远乘法不累加 |
 | — | [视觉原型](docs/img/mockup.html) | 单文件 HTML 原型：可滚动/可选字节/切主题切语言 | 双击即开，零外部依赖；给实现提供像素靶子 |
+| — | [页面设计稿](docs/img/pages/index.html) | 8 屏页面设计（欢迎/编辑器/AI/Diff/数据源/分析/内容库/设置/插件）+ 三套主题 | 单文件可点，缩略图由 headless Chrome 实拍；按钮文案即实现任务 |
 | ADR | [架构决策记录](docs/adr/README.md) | 18 篇不可变决策记录（piece table、placeholder 4KiB、否决 ScrollArea / egui C shim / 可分离窗口 / libyara…） | 只增不改；修订写新号并标"被 NNNN 取代" |
 
 ---

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<title>Geode 晶洞 · 页面设计索引</title>
+<!-- 设计稿索引：所有页面都在 demo.html 里，这里是缩略图导航 + 设计说明。零外部依赖。 -->
+<style>
+:root{
+  --gray-0:#0b0d10; --gray-1:#14181d; --gray-2:#1c2229; --gray-3:#2a323b; --gray-6:#9aa4b1; --gray-9:#e6ebf2;
+  --blue-4:#3b82f6; --green-5:#22c55e; --amber-5:#f59e0b; --red-5:#ef4444; --cyan-5:#22d3ee;
+  --fg:#e6ebf2; --fg-2:#9aa4b1; --bg:#0b0d10; --bg-raised:#14181d; --bd:#2a323b; --bd-sep:#1c2229;
+  --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --r:4px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:13px/1.6 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif}
+.wrap{max-width:1240px;margin:0 auto;padding:var(--s6) var(--s5) 80px}
+header{border-bottom:1px solid var(--bd-sep);padding-bottom:var(--s4);margin-bottom:var(--s5)}
+h1{margin:0 0 6px;font-size:24px;font-weight:600;letter-spacing:.01em}
+h1 small{font-size:13px;color:var(--fg-2);font-weight:400;margin-left:10px}
+p.lead{margin:0;color:var(--fg-2);line-height:1.75}
+h2{font-size:15px;font-weight:600;margin:var(--s6) 0 var(--s3);letter-spacing:.02em}
+h2 span{color:var(--fg-2);font-weight:400;font-size:13px;margin-left:8px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:var(--s4)}
+a.card{display:block;text-decoration:none;color:inherit;border:1px solid var(--bd-sep);border-radius:var(--r);overflow:hidden;background:var(--bg-raised);transition:border-color .12s,transform .12s}
+a.card:hover{border-color:var(--blue-4);transform:translateY(-2px)}
+a.card img{display:block;width:100%;height:auto;border-bottom:1px solid var(--bd-sep)}
+a.card .meta{padding:var(--s3)}
+a.card b{font-size:13px;font-weight:600}
+a.card em{display:block;font-style:normal;color:var(--fg-2);font-size:12px;margin-top:4px;line-height:1.6}
+.tag{display:inline-block;font-size:11px;color:var(--cyan-5);border:1px solid color-mix(in srgb,var(--cyan-5) 40%,transparent);border-radius:9px;padding:0 6px;margin-left:6px}
+.note{border-left:3px solid var(--blue-4);background:#101820;padding:var(--s3) var(--s4);border-radius:var(--r);color:var(--fg-2);font-size:12px;line-height:1.75}
+.note b{color:var(--fg)}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:var(--s2)}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--bd-sep);vertical-align:top}
+th{color:var(--fg-2);font-weight:500}
+td.mono,code{font-family:ui-monospace,Menlo,monospace}
+code{background:var(--gray-2);padding:1px 5px;border-radius:3px;font-size:11.5px}
+.three{display:grid;grid-template-columns:repeat(3,1fr);gap:var(--s4)}
+footer{margin-top:var(--s6);padding-top:var(--s4);border-top:1px solid var(--bd-sep);color:var(--fg-2);font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Geode 晶洞 · 页面设计<small>8 屏 · 三套主题 · 单文件可点</small></h1>
+    <p class="lead">
+      所有页面都在一个文件里：<code>demo.html</code>（双击即开，零外链，断网可用）。左侧栏切换屏幕，左下角切主题，
+      每条交互都做成可点的样子——但数据是写死的示例。缩略图由 headless Chrome 实际渲染，不是手绘。
+    </p>
+  </header>
+
+  <div class="note">
+    <b>设计依据（不是随手画的）</b><br>
+    栅格 4dp、字阶 11/13/15/18/24、四套主题完整 token 表 → <code>docs/26-visual-design.md</code>；
+    三栏布局、命令注册表、主题三层 token → <code>docs/16-ui-shell-theme-i18n.md</code>；
+    旅程与文案（只读降级优先于拒绝打开、模态只留给安全事件）→ <code>docs/25-ux-flows-and-copy.md</code>；
+    AI 侧的 verifier / 置信度 / 采样 → <code>docs/03-ai-dsl-generation.md</code>；
+    diff 先锚点后 Myers → <code>docs/09-diff-subsystem.md</code>。
+  </div>
+
+  <h2>页面 <span>点卡片进入对应屏幕</span></h2>
+  <div class="grid">
+    <a class="card" href="demo.html#welcome">
+      <img src="shots/welcome.png" alt="启动与欢迎">
+      <div class="meta"><b>① 启动与欢迎</b><span class="tag">旅程 J-A</span>
+        <em>最近文件 / 恢复上次的 3 条修改 / 待确认字段（带置信度）。第一屏就告诉你"哪些还不确定"，不装作都知道。</em></div>
+    </a>
+    <a class="card" href="demo.html#bspec">
+      <img src="shots/bspec.png" alt="BinSpec 编辑器">
+      <div class="meta"><b>② BinSpec 编辑器</b><span class="tag">核心屏</span>
+        <em>左写规则、右看结构、下看字节，共用一个游标。lint 建议是 verifier 的第 0 层，人和 AI 同一套规则。</em></div>
+    </a>
+    <a class="card" href="demo.html#ai">
+      <img src="shots/ai.png" alt="AI 猜结构">
+      <div class="meta"><b>③ AI 猜结构</b><span class="tag">差异化</span>
+        <em>生成→编译→执行→10 条不变量，最多 3 轮修复；采样只发 48 KiB；置信度 0.92 的来路写清楚。</em></div>
+    </a>
+    <a class="card" href="demo.html#diff">
+      <img src="shots/diff.png" alt="字节级 Diff">
+      <div class="meta"><b>④ 字节级 Diff</b><span class="tag">旅程 J-D</span>
+        <em>滚动哈希锚点 + 缺口 Myers；结构级差异叠在字节级之上，只标不猜。</em></div>
+    </a>
+    <a class="card" href="demo.html#providers">
+      <img src="shots/providers.png" alt="数据源">
+      <div class="meta"><b>⑤ 数据源</b><span class="tag">旅程 J-B</span>
+        <em>文件 / 磁盘 / 进程内存 / GDB / SSH。能力差异用 Caps 表达，易变源警告常驻且可抓快照。</em></div>
+    </a>
+    <a class="card" href="demo.html#analysis">
+      <img src="shots/analysis.png" alt="分析与可视化">
+      <div class="meta"><b>⑥ 分析与可视化</b><span class="tag">四个页签</span>
+        <em>熵曲线 / 反汇编 / 字段可视化 / YARA。命中一律写图层，不改你的数据。</em></div>
+    </a>
+    <a class="card" href="demo.html#store">
+      <img src="shots/store.png" alt="内容库">
+      <div class="meta"><b>⑦ 内容库</b><span class="tag">冷启动</span>
+        <em>模板 / 主题 / 语言包 / 迁移器。签名验摘要、安装≠启用、GPL 红线写在界面上。</em></div>
+    </a>
+    <a class="card" href="demo.html#settings">
+      <img src="shots/settings.png" alt="设置">
+      <div class="meta"><b>⑧ 设置</b><span class="tag">三档隐私</span>
+        <em>视图 / 性能 / AI 与隐私 / 快捷键。性能页直接显示"当前值 / 上限"，安全姿态只能由用户上调。</em></div>
+    </a>
+    <a class="card" href="demo.html#plugins">
+      <img src="shots/plugins.png" alt="插件">
+      <div class="meta"><b>⑨ 插件</b><span class="tag">v1 边界</span>
+        <em>数据类插件 + 声明式控件树；诚实写出"v1 插件崩溃 = 应用崩溃"，所以装 ≠ 启用。</em></div>
+    </a>
+  </div>
+
+  <h2>同一批页面的另两套主题 <span>暗 / 亮 / 高对比，切了不会崩</span></h2>
+  <div class="three">
+    <a class="card" href="demo.html?theme=light#welcome"><img src="shots/welcome-light.png" alt="亮色"><div class="meta"><b>亮色主题</b><em>同一套 token，正文对比度 18.2:1</em></div></a>
+    <a class="card" href="demo.html?theme=hc#diff"><img src="shots/diff-hc.png" alt="高对比"><div class="meta"><b>高对比</b><em>强制 2px 实线、直角、去阴影；正文 19.6:1</em></div></a>
+    <a class="card" href="demo.html?theme=hc#settings"><img src="shots/settings-hc.png" alt="高对比设置"><div class="meta"><b>高对比 · 设置</b><em>dim 档在 HC 下允许降到 4.5:1，其余仍 ≥7:1</em></div></a>
+  </div>
+
+  <h2>怎么用这份设计稿</h2>
+  <table>
+    <tr><th style="width:180px">你要做的事</th><th>看哪</th></tr>
+    <tr><td>写 geode-ui 的布局</td><td><code>demo.html</code> 的 <code>.rail / .menubar / .toolbar / .statusbar</code> 尺寸：200 / 28 / 36 / 24 px，圆角 4，间距全部 4 的倍数</td></tr>
+    <tr><td>实现组件</td><td><code>.btn</code>（四种）、<code>.tabs</code>、<code>.panel</code>、<code>.kv</code>、<code>.tree</code>、<code>.banner</code>（三种）、<code>.badge</code>、<code>.conf</code>（置信度）、<code>.seg</code>、<code>.sw</code>——全部只用 semantic token，没有一处硬编码颜色</td></tr>
+    <tr><td>对像素</td><td>配色取 <code>docs/26-visual-design.md</code> §4.9 的表；本稿与表一致（dark 的 <code>hex.null-byte / ascii-nonprint</code> 用的是修正后的暗淡档）</td></tr>
+    <tr><td>找交互边界</td><td>点所有按钮都会弹一句"演示稿：…"，那句话就是在说真实实现该做什么，以及对应哪份文档的哪一节</td></tr>
+    <tr><td>看主视图细节</td><td><code>../mockup.html</code>——那一份带 canvas 自绘的 hex 网格、虚拟滚动、比例尺滚动条，是像素级靶子</td></tr>
+  </table>
+
+  <h2>这份稿子没做的事 <span>诚实清单</span></h2>
+  <div class="note">
+    ① 无真实数据：所有文件、结构、命中都是示例。<br>
+    ② 无编辑：按钮只弹 toast，撤销栈、patch、保存事务都在文档里（<code>04</code> / <code>17</code>）。<br>
+    ③ 只做了 8 屏：命令面板、模板迁移向导、YARA 规则编辑器、崩溃恢复对话框、首次运行引导还没画。<br>
+    ④ 只做了 zh：i18n 的 key 结构与伪本地化在 <code>16 §4.6</code>，本稿没接。<br>
+    ⑤ 没有响应式断点外的适配：1440×900 为基准，更窄会溢出（真实实现按 <code>05 §6</code> 的降级梯度走）。
+  </div>
+
+  <footer>
+    Geode 晶洞 · 页面设计稿 v1 · 生成日期 2026-11-09 · 对应文档版本：26 / 25 / 16 / 05 / 09 / 03
+  </footer>
+</div>
+</body>
+</html>
