@@ -34,7 +34,7 @@ M0 的读路径与骨架已落地（4 GiB 打开 0.013 ms、31 测试、CI 绿�
 | ID | 任务 | 人日 | 验收（怎么算做完） | 状态 |
 |---|---|---|---|---|
 | P1 | 错误码登记表 + `xtask docs-errors`（双向校验 + 生成 `error_codes.rs`） | 0.3 | `cargo xtask docs-errors --check` 绿；126 码全登记；生成文件进 CI | `[x]` 2026-11-09（释义 54/126，余 72 条随 27 文档补） |
-| P2 | `schemas/*/v1.json` ×4（geopatch / geojournal / geows / geoproj） | 0.3 | 四个 schema 能被 `jsonschema` 校验器加载；与 23 §3 的字段表逐字段对齐 | `[ ]` |
+| P2 | `schemas/*/v1.json` ×4（geopatch / geojournal / geows / geoproj） | 0.3 | 四个 schema 能被 `jsonschema` 校验器加载；与 23 §3 的字段表逐字段对齐 | `[~]` 2/4：`geows`、`geoproj` 已写 + `xtask schema-check`（白名单 / 禁 `$ref`·`format` / object 必须 `additionalProperties: true` / 属性 description 必须带 § 节号）；二进制两格式待 `v1.layout.md` |
 | P3 | `tests/vectors/`（每格式最小 + 完整 + ≥3 损坏样本 + `.expect.toml`） | 0.3 | 每条损坏样本在 `geode-format` 的解析器里产出**指定的** `EB` 码 | `[ ]` |
 | P4 | bench 骨架（criterion，先 6 项：open_4gb / scroll_p99 / save_1gb / read_64k / edit_random / undo_all） | 0.3 | `cargo bench` 能跑；`xtask bench audit` 认得出 6 项与 00 §7 的对应关系 | `[~]` 2/6 实现（open_4gb 6.19 µs、read_64k 889 ns）；registry 已登记 4 项阻塞原因 |
 | P5 | proptest 骨架（piece table vs `Vec<u8>` 影子对拍） | 0.2 | 随机操作序列 1 万次，双实现对拍无差异（此时 buffer 还没有编辑，先锁只读读路径） | `[x]` 只读路径完成：`ByteRange` 5 条 + `Buffer::read` 2 条属性；编辑对拍随 T1.4/T1.5 接入 |
@@ -74,6 +74,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 2026-11-09 | 文档收口：M0 实现状态、M1 前置工件、4 项 spike 写进 `18 §10.1~10.4`；README 增「开工前清单」 | `7d0d7a2` |
 | 2026-11-09 | **P1 完成**：建 `docs/errors.toml`（126 码唯一事实来源）+ `xtask docs-errors`（双向校验 + 生成 `crates/geode-core/src/error_codes.rs`）+ CI 加 `--check`；测试 31 → 33 | `d0627c2` |
 | 2026-11-09 | **P5 完成（只读路径）**：7 条 proptest 属性（`ByteRange` 5 + `Buffer::read` 2）；属性测试当场抓出 `clip` 的 `Option` 永远为 `Some` 的假信号，已改为返回 `Self` | 见下一次提交 |
+| 2026-11-09 | **P2 部分**：写 `schemas/geows/v1.json`、`schemas/geoproj/v1.json` + 两份 `CHANGELOG.md`；新增 `cargo xtask schema-check` 并接入 CI（负向测试：塞一个 `format` ⇒ 退出码 1，报两处） | 见下一次提交 |
 | 2026-11-09 | **P4 部分**：新建 `bench/` crate（criterion）+ `M1_BENCHES` 注册表（6 项，4 项写明阻塞任务）；`open_4gb` 6.19 µs、`read_64k` 889 ns（内存源，仅回归基线） | 同上 |
 
 ---

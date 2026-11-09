@@ -1,0 +1,420 @@
+{
+  "type": "object",
+  "description": "23 §3.4 `.geoproj` 项目根对象。项目是可提交的团队资产：禁绝对路径、禁密钥值、禁内嵌样本。",
+  "properties": {
+    "schema_version": {
+      "description": "23 §3.2 版本字段，当前恒为 1；>1 ⇒ EB001 拒绝加载且不写盘。",
+      "const": 1
+    },
+    "kind": {
+      "description": "23 §3.4 文件类型判别，恒为 \"geoproj\"；不符 ⇒ EB002。",
+      "const": "geoproj"
+    },
+    "project_id": {
+      "description": "23 §3.4 项目 ULID。",
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "name": {
+      "description": "23 §3.4 项目名，1..=200 字符且不含换行。",
+      "type": "string",
+      "pattern": "^[^\\r\\n]+$"
+    },
+    "created_at": {
+      "description": "23 §3.4 创建时间，RFC 3339 UTC（Z，无小数秒）；不参与任何判定与排序。",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "modified_at": {
+      "description": "23 §3.4 最近修改时间，格式同 created_at。",
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}Z$"
+    },
+    "app_version": {
+      "description": "23 §3.4 写入者版本，semver，仅用于诊断。",
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "documents": {
+      "description": "23 §3.4 文档引用，1..=256 项；doc_uuid 与 id 各自唯一（EB010）。",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "description": "23 §3.4 文档条目。",
+        "properties": {
+          "doc_uuid": {
+            "description": "23 §3.4 文档 ULID。",
+            "type": "string",
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+          },
+          "id": {
+            "description": "23 §3.4 项目内短 id，供 bookmarks/assertions 引用。",
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,31}$"
+          },
+          "path": {
+            "description": "23 §3.4 相对项目根的路径；禁绝对、禁 .. 逃出根（EB009）、≤1024 字符。",
+            "type": "string",
+            "pattern": "^.{0,1024}$"
+          },
+          "optional": {
+            "description": "23 §3.4 文件不可达时是否允许降级（见 17 §4.3）。",
+            "type": "boolean"
+          },
+          "note": {
+            "description": "23 §3.4 备注。",
+            "type": "string",
+            "pattern": "^.{0,2000}$"
+          },
+          "fingerprint": {
+            "type": "object",
+            "description": "23 §3.4 指纹；首次写入时必须存在，缺失 ⇒ EB004 并标未验证。",
+            "properties": {
+              "size": {
+                "description": "23 §3.4 文件字节数。",
+                "type": "integer",
+                "minimum": 0
+              },
+              "head_len": {
+                "description": "23 §3.4 头部指纹长度，默认 65536。",
+                "type": "integer",
+                "minimum": 4096,
+                "maximum": 1048576
+              },
+              "head_blake3": {
+                "description": "23 §3.4 头部 BLAKE3，64 位小写 hex。",
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "full_blake3": {
+                "description": "23 §3.4 全文件 BLAKE3；仅 size≤512MB 或显式 full 时存在。",
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "size",
+              "head_blake3"
+            ]
+          },
+          "templates": {
+            "description": "23 §3.4 模板引用（引用不拷贝），≤32 项。",
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "object",
+              "description": "23 §3.4 模板引用。",
+              "properties": {
+                "template": {
+                  "description": "23 §3.4 内容包 id。",
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9-]{1,46}\\.[a-z0-9-]{1,32}$"
+                },
+                "version": {
+                  "description": "23 §3.4 semver 约束（req 语义，无 build metadata）。",
+                  "type": "string"
+                },
+                "source": {
+                  "description": "23 §3.4 来源；未知 ⇒ EB006 视为 library。",
+                  "enum": [
+                    "library",
+                    "project_file",
+                    "generated"
+                  ]
+                },
+                "sha256": {
+                  "description": "23 §3.4 project_file 来源时必填的 64 位小写 hex。",
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                "entry_point": {
+                  "description": "23 §3.4 包内相对路径，默认 main。",
+                  "type": "string"
+                }
+              },
+              "additionalProperties": true,
+              "required": [
+                "template",
+                "version"
+              ]
+            }
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "doc_uuid",
+          "id",
+          "path",
+          "fingerprint"
+        ]
+      }
+    },
+    "processors": {
+      "type": "object",
+      "description": "23 §3.4 数据处理器图（见 07）。",
+      "properties": {
+        "nodes": {
+          "description": "23 §3.4 节点表，id 唯一，kind 必须在 geode-proc 注册表（EB008）。",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "23 §3.4 处理器节点。",
+            "properties": {
+              "id": {
+                "description": "23 §3.4 节点 id。",
+                "type": "integer",
+                "minimum": 0
+              },
+              "kind": {
+                "description": "23 §3.4 处理器类型名。",
+                "type": "string"
+              },
+              "params": {
+                "type": "object",
+                "description": "23 §3.4 参数表；密钥必须是 SecretRef（EB005）。",
+                "properties": {},
+                "additionalProperties": true
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "id",
+              "kind"
+            ]
+          }
+        },
+        "edges": {
+          "description": "23 §3.4 连边，from/to 必须指向已存 id（EB008）。",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "23 §3.4 连边。",
+            "properties": {
+              "from": {
+                "description": "23 §3.4 起点节点 id。",
+                "type": "integer",
+                "minimum": 0
+              },
+              "to": {
+                "description": "23 §3.4 终点节点 id。",
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": true,
+            "required": [
+              "from",
+              "to"
+            ]
+          }
+        },
+        "bypass": {
+          "description": "23 §3.4 是否整体旁路，默认 false。",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": true
+    },
+    "yara": {
+      "type": "object",
+      "description": "23 §3.4 YARA 配置（见 12）。",
+      "properties": {
+        "ruleset": {
+          "description": "23 §3.4 规则集路径。",
+          "type": "string"
+        },
+        "rule_dirs": {
+          "description": "23 §3.4 规则目录列表。",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "namespaces": {
+          "description": "23 §3.4 命名空间列表。",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "min_hits": {
+          "description": "23 §3.4 最小命中数。",
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "assertions": {
+      "description": "23 §3.4 断言，≤1000 项，id 唯一。",
+      "type": "array",
+      "maxItems": 1000,
+      "items": {
+        "type": "object",
+        "description": "23 §3.4 断言。",
+        "properties": {
+          "id": {
+            "description": "23 §3.4 断言 id。",
+            "type": "string"
+          },
+          "doc": {
+            "description": "23 §3.4 引用 documents[].id。",
+            "type": "string"
+          },
+          "expr": {
+            "description": "23 §3.4 BinSpec 表达式，非空。",
+            "type": "string",
+            "pattern": "^.{1,}$"
+          },
+          "severity": {
+            "description": "23 §3.4 严重度。",
+            "enum": [
+              "error",
+              "warn",
+              "info"
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "doc",
+          "expr",
+          "severity"
+        ]
+      }
+    },
+    "bookmarks": {
+      "description": "23 §3.4 书签，≤5000 项，id 唯一。",
+      "type": "array",
+      "maxItems": 5000,
+      "items": {
+        "type": "object",
+        "description": "23 §3.4 书签。",
+        "properties": {
+          "id": {
+            "description": "23 §3.4 书签 id。",
+            "type": "string"
+          },
+          "doc": {
+            "description": "23 §3.4 引用 documents[].id。",
+            "type": "string"
+          },
+          "label": {
+            "description": "23 §3.4 标签，≤256。",
+            "type": "string",
+            "pattern": "^.{0,256}$"
+          },
+          "color": {
+            "description": "23 §3.4 主题 token；未知 ⇒ EB006。",
+            "type": "string"
+          },
+          "tags": {
+            "description": "23 §3.4 标签数组，≤16 项，每项 ≤32 字符。",
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "string",
+              "pattern": "^.{0,32}$"
+            }
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "id",
+          "doc"
+        ]
+      }
+    },
+    "search_history": {
+      "type": "object",
+      "description": "23 §3.4 搜索历史，≤20 条每 ≤4 KiB；只存查询与参数，不存结果。",
+      "properties": {
+        "queries": {
+          "description": "23 §3.4 查询列表。",
+          "type": "array",
+          "maxItems": 20,
+          "items": {
+            "type": "object",
+            "description": "23 §3.4 单条查询。",
+            "properties": {
+              "q": {
+                "description": "23 §3.4 查询串。",
+                "type": "string"
+              },
+              "mode": {
+                "description": "23 §3.4 搜索模式。",
+                "type": "string"
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "ai": {
+      "type": "object",
+      "description": "23 §3.4 AI 相关（见 03 §10）。",
+      "properties": {
+        "provenance": {
+          "description": "23 §3.4 生成记录，禁 prompt、禁样本字节（EB005）。",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "23 §3.4 单条来源记录。",
+            "properties": {
+              "at": {
+                "description": "23 §3.4 时间戳。",
+                "type": "string"
+              },
+              "provider": {
+                "description": "23 §3.4 提供方。",
+                "type": "string"
+              },
+              "model": {
+                "description": "23 §3.4 模型标识。",
+                "type": "string"
+              },
+              "task": {
+                "description": "23 §3.4 任务类型。",
+                "type": "string"
+              },
+              "input_digest": {
+                "description": "23 §3.4 输入摘要。",
+                "type": "string"
+              },
+              "output_sha256": {
+                "description": "23 §3.4 输出摘要。",
+                "type": "string"
+              },
+              "accepted": {
+                "description": "23 §3.4 是否被接受。",
+                "type": "boolean"
+              },
+              "human_edits": {
+                "description": "23 §3.4 人工修改次数。",
+                "type": "integer",
+                "minimum": 0
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "kind",
+    "project_id",
+    "name",
+    "created_at",
+    "documents"
+  ]
+}

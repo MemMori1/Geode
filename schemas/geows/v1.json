@@ -1,0 +1,347 @@
+{
+  "type": "object",
+  "description": "23 §3.3 `.geows` 工作区根对象。未知字段原样保留（D3）。",
+  "properties": {
+    "schema_version": {
+      "description": "23 §3.2 版本字段，当前恒为 1；>1 ⇒ EB001 拒绝加载且不写盘。",
+      "const": 1
+    },
+    "kind": {
+      "description": "23 §3.3 文件类型判别，恒为 \"geows\"；不符 ⇒ EB002。",
+      "const": "geows"
+    },
+    "workspace_id": {
+      "description": "23 §3.3 工作区 ULID（26 字符 Crockford base32），用于锁与跨实例识别。",
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "project": {
+      "description": "23 §3.3 关联项目文件路径，相对 .geows 所在目录；绝对路径 ⇒ EB009 告警。",
+      "type": "string"
+    },
+    "window": {
+      "type": "object",
+      "description": "23 §3.3 窗口几何；机器本地状态，可安全丢弃。",
+      "properties": {
+        "w": {
+          "description": "23 §3.3 窗口宽（逻辑像素）。",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "h": {
+          "description": "23 §3.3 窗口高（逻辑像素）。",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "dpi_scale": {
+          "description": "23 §3.3 显示缩放。",
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 4.0
+        }
+      },
+      "additionalProperties": true
+    },
+    "layout": {
+      "type": "object",
+      "description": "23 §3.3 布局树根；type=split 需 axis/ratio/children，type=tab 需 views。树深 ≤16、节点 ≤256 由加载器校验（EB005）；本 schema 因禁用 $ref 只校验一层。",
+      "properties": {
+        "type": {
+          "description": "23 §3.3 节点类型。",
+          "enum": [
+            "split",
+            "tab"
+          ]
+        },
+        "axis": {
+          "description": "23 §3.3 分割方向，仅 split 使用。",
+          "enum": [
+            "horizontal",
+            "vertical"
+          ]
+        },
+        "ratio": {
+          "description": "23 §3.3 分割比例，仅 split 使用，开区间 (0,1)。",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "children": {
+          "description": "23 §3.3 子节点数组，仅 split 使用。",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "description": "23 §3.3 子节点（一层，深层由加载器校验）。",
+            "properties": {
+              "type": {
+                "description": "23 §3.3 节点类型。",
+                "enum": [
+                  "split",
+                  "tab"
+                ]
+              },
+              "views": {
+                "description": "23 §3.3 叶节点引用的 views[].view_id 列表。",
+                "type": "array",
+                "items": {
+                  "type": "integer"
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        },
+        "views": {
+          "description": "23 §3.3 叶节点引用的 views[].view_id 列表，仅 tab 使用。",
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "docs": {
+      "description": "23 §3.3 会话中打开的文档，1..=512 项，doc_uuid 唯一（EB010）。",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 512,
+      "items": {
+        "type": "object",
+        "description": "23 §3.3 文档条目。",
+        "properties": {
+          "doc_uuid": {
+            "description": "23 §3.3 文档 ULID，与 journal 交叉引用的唯一键。",
+            "type": "string",
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+          },
+          "project_doc": {
+            "description": "23 §3.3 对应 .geoproj 的 documents[].id，不匹配 ⇒ EB008。",
+            "type": "string"
+          },
+          "dirty_at_exit": {
+            "description": "23 §3.3 退出时是否有未保存修改；true ⇒ 启动走恢复。",
+            "type": "boolean"
+          },
+          "note": {
+            "description": "23 §3.3 用户备注。",
+            "type": "string",
+            "pattern": "^.{0,2000}$"
+          },
+          "source": {
+            "description": "23 §3.3 数据来源，按 kind 判别：file 需 path、provider 需 provider 串、untitled 无附加字段。",
+            "oneOf": [
+              {
+                "type": "object",
+                "description": "23 §3.3 本地文件来源。",
+                "properties": {
+                  "kind": {
+                    "description": "23 §3.3 来源类型。",
+                    "const": "file"
+                  },
+                  "path": {
+                    "description": "23 §3.3 相对路径。",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "kind",
+                  "path"
+                ]
+              },
+              {
+                "type": "object",
+                "description": "23 §3.3 未命名来源。",
+                "properties": {
+                  "kind": {
+                    "description": "23 §3.3 来源类型。",
+                    "const": "untitled"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "kind"
+                ]
+              },
+              {
+                "type": "object",
+                "description": "23 §3.3 数据源插件来源。",
+                "properties": {
+                  "kind": {
+                    "description": "23 §3.3 来源类型。",
+                    "const": "provider"
+                  },
+                  "provider": {
+                    "description": "23 §3.3 provider 描述串。",
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": true,
+                "required": [
+                  "kind",
+                  "provider"
+                ]
+              }
+            ]
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "doc_uuid",
+          "source"
+        ]
+      }
+    },
+    "views": {
+      "description": "23 §3.3 视图私有状态，≤256 项，view_id 唯一（EB010）。",
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "type": "object",
+        "description": "23 §3.3 视图条目。",
+        "properties": {
+          "view_id": {
+            "description": "23 §3.3 视图 id，1..=2^31-1。",
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2147483647
+          },
+          "doc_uuid": {
+            "description": "23 §3.3 所属文档，必须存在于 docs[]（EB008）。",
+            "type": "string",
+            "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+          },
+          "kind": {
+            "description": "23 §3.3 视图类型；未知 ⇒ EB006 按 hex 处理。",
+            "enum": [
+              "hex",
+              "structure",
+              "inspector",
+              "diff",
+              "disasm",
+              "search",
+              "yara",
+              "processor",
+              "vis"
+            ]
+          },
+          "cursor": {
+            "description": "23 §3.3 游标偏移，0..=2^63-1。",
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9223372036854775807
+          },
+          "scroll_first_row": {
+            "description": "23 §3.3 首行行号（不是像素）。",
+            "type": "integer",
+            "minimum": 0
+          },
+          "selection": {
+            "type": "object",
+            "description": "23 §3.3 选区。",
+            "properties": {
+              "ranges": {
+                "description": "23 §3.3 选区区间，≤1024 项。",
+                "type": "array",
+                "maxItems": 1024,
+                "items": {
+                  "type": "object",
+                  "description": "23 §3.3 半开区间。",
+                  "properties": {
+                    "start": {
+                      "description": "23 §3.3 起始偏移。",
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "len": {
+                      "description": "23 §3.3 长度。",
+                      "type": "integer",
+                      "minimum": 0
+                    }
+                  },
+                  "additionalProperties": true,
+                  "required": [
+                    "start",
+                    "len"
+                  ]
+                }
+              },
+              "rect": {
+                "description": "23 §3.3 是否矩形选择（列模式）。",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": true
+          },
+          "text_encoding": {
+            "description": "23 §3.3 文本编码 id（见 08 §5）；未知 ⇒ EB006 退回 utf-8。",
+            "type": "string"
+          },
+          "columns": {
+            "type": "object",
+            "description": "23 §3.3 列布局。",
+            "properties": {
+              "bytes_per_row": {
+                "description": "23 §3.3 每行字节数。",
+                "enum": [
+                  1,
+                  2,
+                  4,
+                  8,
+                  16,
+                  32,
+                  64
+                ]
+              },
+              "group": {
+                "description": "23 §3.3 分组宽度，必须整除 bytes_per_row。",
+                "enum": [
+                  1,
+                  2,
+                  4,
+                  8
+                ]
+              },
+              "radix": {
+                "description": "23 §3.3 偏移列进制。",
+                "enum": [
+                  "hex",
+                  "dec",
+                  "oct"
+                ]
+              },
+              "width_adaptive": {
+                "description": "23 §3.3 窄窗是否自动降档（不写回配置）。",
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": true
+          },
+          "extras": {
+            "type": "object",
+            "description": "23 §3.3 插件私有数据，≤256 KiB，原样写回。",
+            "properties": {},
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true,
+        "required": [
+          "view_id",
+          "doc_uuid",
+          "kind"
+        ]
+      }
+    }
+  },
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "kind",
+    "workspace_id",
+    "docs"
+  ]
+}
