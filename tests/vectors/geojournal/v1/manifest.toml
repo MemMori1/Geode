@@ -1,0 +1,24 @@
+# `.geojournal` v1 测试向量
+#
+# 权威依据：docs/23-file-formats.md §3.8 + schemas/geojournal/v1.layout.md
+# 头 80 B（17 §4.6 的 64 B 是笔误）。
+
+[[vector]]
+path = "0001-empty-final-len.geojournal"
+expect = "ok"
+note = "最小可用：无编辑，仅 1 条 FinalLen(0)"
+
+[[vector]]
+path = "0002-bad-magic.geojournal"
+expect = "EB002"
+note = "magic 改为 GEOJRN02；关卡 1 失败"
+
+[[vector]]
+path = "0003-truncated-frame.geojournal"
+expect = "EB013"
+note = "最后一帧尾部少 3 字节（CRC 不完整）"
+
+[[vector]]
+path = "0004-bad-frame-crc.geojournal"
+expect = "EB011"
+note = "帧 CRC 末字节翻转；关卡 2 应停止回放并标 Partial"

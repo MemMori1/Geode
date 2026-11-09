@@ -1,0 +1,21 @@
+# `.geows` v1 测试向量（文本格式，判定序见 23 §3.3）
+
+[[vector]]
+path = "0001-minimal.geows"
+expect = "ok"
+note = "最小可用：1 个 docs 项、untitled 之外最简结构"
+
+[[vector]]
+path = "0002-bad-kind.geows"
+expect = "EB002"
+note = "kind 写成 geoproj；第二关失败"
+
+[[vector]]
+path = "0003-too-new.geows"
+expect = "EB001"
+note = "schema_version = 2；拒绝加载且不写盘"
+
+[[vector]]
+path = "0004-no-docs.geows"
+expect = "EB004"
+note = "缺 docs 字段；第四关失败"

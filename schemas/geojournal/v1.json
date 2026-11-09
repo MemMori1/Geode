@@ -1,0 +1,129 @@
+{
+  "type": "object",
+  "description": "23 §3.8 `.geojournal` 解码后的逻辑结构。字节布局见同目录 v1.layout.md。",
+  "properties": {
+    "fmt_ver": {
+      "description": "23 §3.8 格式版本，恒为 1；不匹配 ⇒ 关卡 1 失败 EB001，文件保留绝不删。",
+      "const": 1
+    },
+    "doc_uuid": {
+      "description": "23 §3.8 文档 ULID，必须等于 docs[].doc_uuid 的 16 字节形式。",
+      "type": "string",
+      "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$"
+    },
+    "base_kind": {
+      "description": "23 §3.8 base 来源类型。",
+      "enum": [
+        "file",
+        "untitled",
+        "provider"
+      ]
+    },
+    "base_size": {
+      "description": "23 §3.8 base 字节数（关卡 4）。",
+      "type": "integer",
+      "minimum": 0
+    },
+    "head_len": {
+      "description": "23 §3.8 头部采样长度。",
+      "type": "integer",
+      "minimum": 4096,
+      "maximum": 1048576
+    },
+    "base_head_blake3": {
+      "description": "23 §3.8 base 头部 BLAKE3（关卡 4 的唯一依据）。",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "records": {
+      "description": "23 §3.8 记录序列；末条 FinalLen 决定回放后的长度。",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "23 §3.8 记录（解码后的逻辑视图；真实字节见 v1.layout.md）。",
+        "properties": {
+          "kind": {
+            "description": "23 §3.8 记录类型；未知 kind 按 EB006 跳过（payload_len 自描述）。",
+            "enum": [
+              "overwrite",
+              "insert",
+              "remove",
+              "checkpoint",
+              "comment",
+              "file_meta",
+              "final_len",
+              "save_mark"
+            ]
+          },
+          "seq": {
+            "description": "23 §3.8 序号，从 1 起严格 +1，乱序/重复 ⇒ EB012。",
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "description": "23 §3.8 目标偏移（仅 overwrite/insert/remove）。",
+            "type": "integer",
+            "minimum": 0
+          },
+          "len": {
+            "description": "23 §3.8 长度（overwrite/insert 为数据长度，remove 为删除长度）。",
+            "type": "integer",
+            "minimum": 0
+          },
+          "data_hex": {
+            "description": "23 §3.8 数据字节的大写 hex，偶数长度（23 §3.1）。",
+            "type": "string",
+            "pattern": "^([0-9A-F]{2})*$"
+          },
+          "label": {
+            "description": "23 §3.8 checkpoint 标签，≤255 字节。",
+            "type": "string"
+          },
+          "text": {
+            "description": "23 §3.8 comment 文本，UTF-8，≤4 KiB。",
+            "type": "string"
+          },
+          "head_len": {
+            "description": "23 §3.8 头部采样长度（file_meta）。",
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 1048576
+          },
+          "base_head_blake3": {
+            "description": "23 §3.8 头部 BLAKE3，64 位小写 hex。",
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "path": {
+            "description": "23 §3.8 建议性路径；**不得**用于自动定位。",
+            "type": "string"
+          },
+          "final_size": {
+            "description": "23 §3.8 应用/回放后的长度。",
+            "type": "integer",
+            "minimum": 0
+          },
+          "crc32_ok": {
+            "description": "23 §3.8 该帧 CRC 是否通过（校验结果，不参与写盘）。",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "partial": {
+      "description": "23 §3.8 是否因 CRC 失败而只恢复了前缀（关卡 2）。",
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true,
+  "required": [
+    "fmt_ver",
+    "doc_uuid",
+    "base_kind",
+    "base_size",
+    "head_len",
+    "base_head_blake3",
+    "records"
+  ]
+}

@@ -1,0 +1,10 @@
+schema_version = 1
+kind = "geoproj"
+project_id = "01J9Z8P2M4K6H8G0F2D4S6A8B1"
+name = "样例项目"
+created_at = "2026-11-08T12:00:00Z"
+[[documents]]
+doc_uuid = "01J9Z9A0Q1M4R7T2V5X8B3N6C1"
+id = "fw"
+path = "samples/a.bin"
+fingerprint = { size = 4096, head_len = 65536, head_blake3 = "9f2a1c7b5e07b8d4c6a0f1e2d3c4b5a697887766554433221100ffeeddccbbaa" }

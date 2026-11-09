@@ -1,0 +1,21 @@
+# `.geoproj` v1 测试向量（判定序见 23 §3.4）
+
+[[vector]]
+path = "0001-minimal.geoproj"
+expect = "ok"
+note = "最小可用：1 文档 + 必填指纹"
+
+[[vector]]
+path = "0002-bad-kind.geoproj"
+expect = "EB002"
+note = "kind 写成 geows"
+
+[[vector]]
+path = "0003-absolute-path.geoproj"
+expect = "EB009"
+note = "documents[].path 是绝对路径"
+
+[[vector]]
+path = "0004-dup-doc-id.geoproj"
+expect = "EB010"
+note = "两个文档用了同一个 id"

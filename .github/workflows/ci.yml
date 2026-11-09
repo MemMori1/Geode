@@ -30,3 +30,4 @@ jobs:
       # 18 §10.2 P1：126 个诊断码与 docs/ 双向一致，且生成文件不得手改
       - run: cargo run -p xtask -- docs-errors --check
       - run: cargo run -p xtask -- schema-check
+      - run: cargo run -p xtask -- vectors-check

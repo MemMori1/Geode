@@ -1,0 +1,109 @@
+{
+  "type": "object",
+  "description": "23 §3.6 `.geopatch` 解码后的逻辑结构。字节布局见同目录 v1.layout.md。",
+  "properties": {
+    "fmt_ver": {
+      "description": "23 §3.6 格式版本，恒为 1；>1 ⇒ EB001。",
+      "const": 1
+    },
+    "flags": {
+      "description": "23 §3.6 u16 标志；bit0 HAS_FILE_META，bit1..15 必须 0（否则 EB005）。",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 65535
+    },
+    "base_size": {
+      "description": "23 §3.6 应用前目标字节数，用于预检。",
+      "type": "integer",
+      "minimum": 0
+    },
+    "record_count": {
+      "description": "23 §3.6 记录数，必须等于可解析记录数，否则 EB014。",
+      "type": "integer",
+      "minimum": 0
+    },
+    "records": {
+      "description": "23 §3.6 记录序列；FinalLen 必须是最后一条。",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "description": "23 §3.6 记录（解码后的逻辑视图；真实字节见 v1.layout.md）。",
+        "properties": {
+          "kind": {
+            "description": "23 §3.6 记录类型；未知 kind 按 EB006 跳过（payload_len 自描述）。",
+            "enum": [
+              "overwrite",
+              "insert",
+              "remove",
+              "checkpoint",
+              "comment",
+              "file_meta",
+              "final_len",
+              "save_mark"
+            ]
+          },
+          "seq": {
+            "description": "23 §3.6 序号，从 1 起严格 +1，乱序/重复 ⇒ EB012。",
+            "type": "integer",
+            "minimum": 1
+          },
+          "at": {
+            "description": "23 §3.6 目标偏移（仅 overwrite/insert/remove）。",
+            "type": "integer",
+            "minimum": 0
+          },
+          "len": {
+            "description": "23 §3.6 长度（overwrite/insert 为数据长度，remove 为删除长度）。",
+            "type": "integer",
+            "minimum": 0
+          },
+          "data_hex": {
+            "description": "23 §3.6 数据字节的大写 hex，偶数长度（23 §3.1）。",
+            "type": "string",
+            "pattern": "^([0-9A-F]{2})*$"
+          },
+          "label": {
+            "description": "23 §3.6 checkpoint 标签，≤255 字节。",
+            "type": "string"
+          },
+          "text": {
+            "description": "23 §3.6 comment 文本，UTF-8，≤4 KiB。",
+            "type": "string"
+          },
+          "head_len": {
+            "description": "23 §3.6 头部采样长度（file_meta）。",
+            "type": "integer",
+            "minimum": 4096,
+            "maximum": 1048576
+          },
+          "base_head_blake3": {
+            "description": "23 §3.6 头部 BLAKE3，64 位小写 hex。",
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "path": {
+            "description": "23 §3.6 建议性路径；**不得**用于自动定位。",
+            "type": "string"
+          },
+          "final_size": {
+            "description": "23 §3.6 应用/回放后的长度。",
+            "type": "integer",
+            "minimum": 0
+          },
+          "crc32_ok": {
+            "description": "23 §3.6 该帧 CRC 是否通过（校验结果，不参与写盘）。",
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true,
+  "required": [
+    "fmt_ver",
+    "base_size",
+    "record_count",
+    "records"
+  ]
+}

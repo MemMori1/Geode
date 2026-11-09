@@ -1,0 +1,6 @@
+schema_version = 1
+kind = "geoproj"
+workspace_id = "01J9Z8QK7R3M2X0V5B4N6T1C8D"
+[[docs]]
+doc_uuid = "01J9Z9A0Q1M4R7T2V5X8B3N6C1"
+source = { kind = "untitled" }

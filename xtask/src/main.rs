@@ -10,6 +10,7 @@
 mod deps;
 mod docserrors;
 mod schemas;
+mod vectors;
 
 use std::process::ExitCode;
 
@@ -18,6 +19,16 @@ fn main() -> ExitCode {
     match task.as_deref() {
         Some("deps") => deps::run(),
         Some("docs-errors") => docserrors::run(std::env::args().any(|a| a == "--check")),
+        Some("vectors-check") => match vectors::run(&schemas_root()) {
+            Ok(msg) => {
+                println!("{msg}");
+                ExitCode::SUCCESS
+            }
+            Err(msg) => {
+                eprintln!("{msg}");
+                ExitCode::FAILURE
+            }
+        },
         Some("schema-check") => match schemas::run(&schemas_root()) {
             Ok(msg) => {
                 println!("{msg}");
@@ -35,13 +46,14 @@ fn main() -> ExitCode {
                  任务:\n  \
                    deps          校验 crate 依赖方向与 GUI 污染（18 §3.2，码 E0101~E0104）\n  \
                    docs-errors   校验 docs/errors.toml 与文档的双向一致，并生成 error_codes.rs\n                        --check 只校验不写盘（CI 用）\n  \
-                   schema-check  校验 schemas/*/v*.json 是否守住 23 §3.2 的 JSON Schema 子集\n\n\
+                   schema-check  校验 schemas/*/v*.json 是否守住 23 §3.2 的 JSON Schema 子集\n  \
+                   vectors-check 校验 tests/vectors 每个格式有 manifest 且 ≥3 条损坏样本\n\n\
                  环境: 需在仓库根目录运行"
             );
             ExitCode::SUCCESS
         }
         Some(other) => {
-            eprintln!("未知任务 `{other}`，可用: deps、docs-errors、schema-check");
+            eprintln!("未知任务 `{other}`，可用: deps、docs-errors、schema-check、vectors-check");
             ExitCode::FAILURE
         }
     }

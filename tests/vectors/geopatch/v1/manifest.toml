@@ -1,0 +1,24 @@
+# `.geopatch` v1 测试向量
+#
+# 权威依据：docs/23-file-formats.md §3.6 + schemas/geopatch/v1.layout.md
+# 约定：`expect = "ok"` 表示必须解析成功；其余为**必须产出该错误码**的损坏样本。
+
+[[vector]]
+path = "0001-overwrite-1b.geopatch"
+expect = "ok"
+note = "最小可用：base_size=1、1 条 Overwrite（偏移 0 改 1 字节为 0x42）"
+
+[[vector]]
+path = "0002-bad-magic.geopatch"
+expect = "EB002"
+note = "magic 末字节被改；判定序第一关就该失败"
+
+[[vector]]
+path = "0003-bad-header-crc.geopatch"
+expect = "EB011"
+note = "头 CRC 置 0xDEADBEEF，其余字段完全合法"
+
+[[vector]]
+path = "0004-bad-seq.geopatch"
+expect = "EB012"
+note = "两条记录 seq=1、3，跳号"
