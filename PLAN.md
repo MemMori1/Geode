@@ -60,7 +60,7 @@ Sprint 0 只差两把尺子（P4 5/6 的 `scroll_p99` 要真实窗口；S4 未�
 | T1.6 | patch 收集与合并（间隙 ≤16 归并）+ `.geopatch` 导出（`geode-format`，BE 定长帧 + 每记录 CRC32） | 3 | 导出再导入，字节等价；损坏向量产出指定 `EB` 码 | `[x]` `geode-project` 桥接：`to_patch_file/from_patch_file/apply_patch_file`；64 MiB 源 500 次随机编辑逐字节对拍、4 GiB 稀疏源只读改动窗口；导入先全量校验再应用（失败不半应用）。**归并修正**：只允许等长替换（Overwrite/Fill）且 `at>=last_end`——相邻 Insert/Remove 归并会拼出非法区间 |
 | T1.7 | 保存事务：temp + `fsync(file)` + `fsync(dir)` + 原子 rename + 硬链接 `.bak` + 进度与取消 | 5 | 保存 1 GiB >500 MB/s；`kill -9` 后原文件不损坏 | `[x]` 代码完成：`.bak` 硬链接（失败不致命）、`save_provider_atomic_with` 每 1 MiB 回调、`..._with_cancel` 取消后目标不动且无 `.part`；9 条测试。**吞吐 110.9 MiB/s 未达 500 MB/s**，同卷 `dd conv=fsync` 仅 116.7 MB/s ⇒ 磁盘限制，非实现 |
 | T1.8 | journal 写入与恢复：80 B 头 + `kind│seq│len│payload│crc32`，四道关卡（magic/CRC/seq/指纹） | 5 | `kill -9` 重启提示"恢复 N 条修改"并成功恢复（S2 的结论写进文案） | `[x]` `journal.rs` 608 行：`JournalWriter`（fsync 策略 64 帧/1 s 取先）、`JournalReader::{open,open_with_base}`、`Recovered{partial,truncated_at,failure}`；10 条测试。S2：100 次 kill -9 恢复 100/100、Partial 0/100、最多丢 62 帧（≈124 ms）；限定已写入 spike 文档 |
-| T1.9 | M1 集成验收：把 `18 §10` M1 的五条跑成 CI 用例 | 2 | 五条全绿，作为 M1 的出口 | `[ ]` |
+| T1.9 | M1 集成验收：把 `18 §10` M1 的五条跑成 CI 用例 | 2 | 五条全绿，作为 M1 的出口 | `[~]` **3/5**：`tests/m1_acceptance.rs` 覆盖 ①（4 GiB 处插入 16 B，0.1 ms 内可读）②（10,000 次随机编辑 undo_all 逐字节相等）③ 数据面（journal 尾部截断→Partial 恢复前缀）；④ 1 GiB 保存吞吐受磁盘限制（110.9 MiB/s）；⑤ schema/vectors 已在 P2/P3 覆盖 |
 
 **M1 的硬顺序**：T1.1 → T1.2 → T1.3 → T1.4 → T1.5 →（T1.6 与 T1.7 可并行）→ T1.8 → T1.9。
 T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 P5 的对拍再写。
