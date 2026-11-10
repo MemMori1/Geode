@@ -16,6 +16,10 @@ criterion = { workspace = true }
 name = "piece"
 harness = false
 
+[[bench]]
+name = "frag"
+harness = false
+
 [dependencies]
 geode-core = { workspace = true }
 geode-provider = { workspace = true }
