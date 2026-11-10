@@ -223,9 +223,9 @@ pub struct History { undo: VecDeque<Step>, redo: Vec<Step>, mem: u64,
 ### 4.5 Patch 管理
 
 ```rust
-pub struct PatchSet { spans: Vec<Patch>, version: u64 }   // 按 orig.start 排序的区间表
-pub struct Patch { orig: ByteRange, cur: ByteRange, kind: PatchKind,   // 原文件坐标（C3 回链）/ 当前坐标
-                   old: OldBytes, new: Arc<[u8]> }
+pub struct PatchSet { spans: Vec<Patch>, version: u64 }   // 按 seq（编辑顺序）排列的重放日志
+pub struct Patch { orig: ByteRange, kind: PatchKind,      // orig = 编辑发生时的坐标（C3 回链）
+                   old: OldBytes, new: Arc<[u8]> }        // cur 由长度增量前缀和导出，不落字段
 pub enum OldBytes {
     Full(Arc<[u8]>),                                            // ≤4MB 全文
     View { src: Source, off: u64, len: u64, digest: [u8; 16] },  // 大区间：视图 + blake3 前 16B
@@ -233,7 +233,7 @@ pub enum OldBytes {
 ```
 
 **old 存全文还是摘要（内存权衡）**：一律全文 ⇒ 撤销/导出/写回自包含、provider 挂了也不怕，但改动散布全文件时 old 总量 = 原文件大小，故只用于 ≤4MB 区间；一律摘要 ⇒ 内存极省，但撤销强依赖 provider 可读、违反 §6 降级要求，**否决**；**选定混合**（小改动零依赖、大改动省内存，代价是两套路径）。
-**关键性质与相邻合并**：patch 按 `orig` 区间**归并**，同一原区间反复修改只保留**最初**的 old ⇒ `old` 总量 ≤ min(原文件大小, 改动区间总长)，**不随编辑次数增长**。`patch_old_full_limit = 4MB` 的依据：一屏可见区 ≈2KB，典型 patch 几十字节~几十 KB，4MB 让 99% 的 patch 自包含；另有全局 `patch_old_budget = 128MB`，超限把最老的 `Full` 降级为 `View`。两 patch 在 `cur` 上 gap ≤ 16 字节且 `orig` 上也相邻 ⇒ 合并（拼 old/new、kind 组合）；16 = hex 视图一行内的典型编辑跨度，避免同一行两次编辑显示成两个色块，不做跨 gap 稀疏合并（会产生视觉假连续）。
+**关键性质与相邻合并**：patch 按 `orig` 区间**归并**，同一原区间反复修改只保留**最初**的 old ⇒ `old` 总量 ≤ min(原文件大小, 改动区间总长)，**不随编辑次数增长**。`patch_old_full_limit = 4MB` 的依据：一屏可见区 ≈2KB，典型 patch 几十字节~几十 KB，4MB 让 99% 的 patch 自包含；另有全局 `patch_old_budget = 128MB`，超限把最老的 `Full` 降级为 `View`。**只有等长替换（Overwrite/Fill）允许归并**：两条 patch 在 `orig` 上严格向后、gap ≤ 16 字节 ⇒ 合并（gap 内未改字节同时拼进 old 与 new，保证仍是连续区间替换）；16 = hex 视图一行内的典型编辑跨度，避免同一行两次编辑显示成两个色块。**Insert/Remove 一律不归并**——它们会改变后续坐标，拼起来既不是合法区间替换，也无法用 `orig` 顺序重放；重叠编辑（`at < last.orig.end()`）同样不归并，否则会拼出重复字节。`PatchSet` 因此是**重放日志**（按 seq 应用），不是排序后的 diff 表；`cur` 由长度增量前缀和 `O(log P)` 导出。
 **可视化接口（供 05 上色）**：`query(range, out) -> O(log n + k)`（每帧调用）、`query_point(at)`、`is_dirty()`、`total_bytes()`（状态栏"改动 N 字节"）。05 只需三种颜色 + 未保存指示，不需要 old/new 内容。
 **单 patch 操作**：`revert_patch(idx)` 仅当该 patch 的 `cur` 区间未被后续编辑叠加时可精确回滚，否则返回 `PatchObstructed` + 可回滚子区间，UI 提示"该修改已被后续编辑覆盖"；`apply_patch(idx)` 转成 `EditOp` 走正常编辑通道（可撤销、进 patch 表）；`export(idx|all, fmt)`。
 

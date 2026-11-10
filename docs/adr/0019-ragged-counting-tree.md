@@ -24,14 +24,16 @@ T1.2 要求"计数型 B-tree：叶 64 piece、fanout 64、split/join"（04 §3.2
 好处：
 
 - 定位已经是 O(高度)：10 万 piece 时树高 ≤6、定位 **0.48 µs**，且与偏移位置无关；
-- `split`/`concat` 不需要 borrow/merge，代码量小、可被 150 例随机编辑对拍钉住；
+- `split`/`concat` 不需要 borrow/merge，代码量小、可被 500 例随机编辑对拍钉住；
 - 调用方接口（`spans`/`overwrite`/`insert`/`remove`）与最终 B-tree 一致，换实现不改上层。
 
 代价：
 
 - 节点可能不"胖"，最坏情况下高度高于 log₆₄ n；
-- 相邻 piece 的合并规则还留在语义层，树内没有做——piece 数会多于理论值；
-- **`PieceCursor` 还没改成沿树下降**，现在仍走平坦表。
+- T1.2 收尾已把 R3 边界合并搬进 `concat`（只查两侧边界，不做全树重扫），piece 数下降；
+- T1.2 收尾已加 `TreeCursor` 沿树下降；`PieceCursor` 保留为语义参考实现；
+- `split`/`concat` 不再为单子节点包一层空壳（只折叠独生子，不引入 borrow/merge），
+  避免不规则高度进一步放大。
 
 何时应重新考虑：S1 测出 1 万次随机编辑后 piece 数超预算，或 M1 的 `edit_random`
 基准显示树内 piece 数成为瓶颈——那时把"分裂即打包"换成真正的 B-tree merge/borrow。

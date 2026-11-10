@@ -25,6 +25,16 @@ fn tree_of(n: usize) -> PieceTree {
     PieceTree::from_pieces(pieces, 0)
 }
 
+/// 先在 64 KiB 源上做 1 万次伪随机 1 字节覆盖，再测树上的单步覆盖。
+fn edited_tree(n: usize) -> PieceTree {
+    let mut t = PieceTree::from_source(64 * 1024);
+    for i in 0..n {
+        let at = (i as u64 * 37) % t.len();
+        t.overwrite(at, &[0xEE]).unwrap();
+    }
+    t
+}
+
 fn bench_tree_locate(c: &mut Criterion) {
     let mut g = c.benchmark_group("tree_locate");
     for n in [2_048usize, 100_000] {
@@ -55,6 +65,23 @@ fn bench_locate(c: &mut Criterion) {
     g.finish();
 }
 
+fn bench_tree_edit(c: &mut Criterion) {
+    let mut g = c.benchmark_group("tree_edit");
+    let tree = edited_tree(10_000);
+    let at = tree.len() / 2;
+    g.bench_function("10k_edits_overwrite", |b| {
+        b.iter_batched_ref(
+            || tree.clone(),
+            |t| {
+                t.overwrite(at, &[0x11, 0x22]).unwrap();
+                black_box(t.len())
+            },
+            BatchSize::PerIteration,
+        );
+    });
+    g.finish();
+}
+
 fn bench_edit(c: &mut Criterion) {
     let mut g = c.benchmark_group("piece_overwrite");
     for n in [64usize, 512, 2048] {
@@ -76,7 +103,13 @@ fn bench_edit(c: &mut Criterion) {
 #[allow(missing_docs)]
 mod bench_entry {
     use super::*;
-    criterion_group!(benches, bench_locate, bench_edit, bench_tree_locate);
+    criterion_group!(
+        benches,
+        bench_locate,
+        bench_edit,
+        bench_tree_locate,
+        bench_tree_edit
+    );
 }
 
 criterion_main!(bench_entry::benches);

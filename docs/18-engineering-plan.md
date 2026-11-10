@@ -71,8 +71,9 @@ geode/
 │   ├── geode-yara/src/{lib.rs, engine.rs, ruleset.rs, hits.rs}               # feature "yara"
 │   ├── geode-migrate/src/{lib.rs, ir.rs, origin.rs, from_bt.rs, from_hexpat.rs,
 │   │                     from_ksy.rs, from_c.rs, to_c.rs, to_ksy.rs, emit.rs}  # 见 24
-│   ├── geode-project/src/{lib.rs, config.rs, workspace.rs, project.rs, schema.rs, migrate.rs,
-│   │                    journal.rs, snapshot.rs, secrets.rs, lock.rs, recent.rs, atomic.rs, export.rs}
+│   ├── geode-project/src/{lib.rs, error.rs, patch_bridge.rs, config.rs, workspace.rs, project.rs,
+│   │                    schema.rs, migrate.rs, journal.rs, snapshot.rs, secrets.rs, lock.rs,
+│   │                    recent.rs, atomic.rs, export.rs}
 │   ├── geode-ai/src/{lib.rs, client.rs, sampler.rs, context.rs, prompt.rs, verifier_bridge.rs,
 │   │                repair.rs, confidence.rs, provenance.rs, eval.rs}     # feature "ai"
 │   ├── geode-content/src/{lib.rs, index.rs, source.rs, cache.rs, update.rs}
@@ -113,7 +114,7 @@ geode/
 | geode-diff | 1 | core, provider |
 | geode-disasm | 1 | core, provider（+ 可选 capstone） |
 | geode-yara | 1 | core, provider（+ 可选 yara-x） |
-| geode-project | 2 | core, provider, buffer（仅 `EditOp`/`version()`）, bspec(`TemplateRef`), proc(`Graph` 的 serde) |
+| geode-project | 2 | core, provider, buffer（仅 `EditOp`/`version()`）, format(`.geopatch` 记录), bspec(`TemplateRef`), proc(`Graph` 的 serde） |
 | geode-ai | 2 | core, bspec, project(`SecretRef`) |
 | geode-content | 2 | core, bspec（模板装载） |
 | geode-plugin-host | 2 | core, annot, provider, viz（同层显式例外：注册插件可视化器） |

@@ -41,6 +41,7 @@ const MATRIX: &[(&str, i8, &[&str])] = &[
             "geode-core",
             "geode-provider",
             "geode-buffer",
+            "geode-format",
             "geode-bspec",
             "geode-proc",
         ],

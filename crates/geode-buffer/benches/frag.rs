@@ -18,7 +18,7 @@
 //!
 //! 为避免"模型只是自说自话"，`report_main` 会用真实实现做对拍：
 //! (b) 用 `PieceTable`（R3 内建）、(d) 用 `PieceTable + demote_small_placeholders`
-//! （零字节 Provider）、(a) 用 `PieceTree`（树本来就不合并）。piece 数不一致会打印
+//! （零字节 Provider）、(b) 再用 `PieceTree`（R3 已搬进树）对拍。piece 数不一致会打印
 //! `MISMATCH`。
 
 use criterion::{Criterion, criterion_group, criterion_main};
@@ -783,9 +783,8 @@ fn run_piece_tree(ops: &[Op], source_len: u64) -> Stats {
     }
     let elapsed = start.elapsed();
     Stats {
-        // PieceTree 的 `piece_count()` 会把 split 在 leaf 内边界产生的零长片也算进去；
-        // 这里用 `spans` 只数非空片，和 PieceTable/模型的口径一致。
-        pieces: tree.spans(0, tree.len()).len(),
+        // split 现在不会在 piece 边界切出零长片，两者口径一致。
+        pieces: tree.piece_count(),
         literal_bytes: 0,
         elapsed,
     }
@@ -809,7 +808,7 @@ fn print_row(label: &str, stats: Stats, theory: f64) {
 }
 
 fn debug_compare(ops: &[Op], source_len: u64) {
-    let policy = POLICIES[0];
+    let policy = POLICIES[1];
     let mut model = FragTable::new(policy, source_len);
     let mut tree = PieceTree::from_source(source_len);
     let data = [0xA5u8; 64];
@@ -832,7 +831,7 @@ fn debug_compare(ops: &[Op], source_len: u64) {
                 tree.remove(at, end - at).unwrap();
             }
         }
-        let tree_pieces = tree.spans(0, tree.len()).len();
+        let tree_pieces = tree.piece_count();
         if model.piece_count() != tree_pieces || model.len != tree.len() {
             println!(
                 "DEBUG 首个不一致 @ op {i}: {op:?}\n  before model={before_model} tree={before_tree}\n  model pieces={} real={} len={} zero={}\n  tree  pieces={} len={}",
@@ -902,10 +901,10 @@ fn report_main() {
     );
     let tree = run_piece_tree(&ops, SOURCE_LEN);
     println!(
-        "PieceTree(无合并)       pieces={:>7}  vs 模型(a)={:>7}  {}  [{} ms]",
+        "PieceTree(R3)           pieces={:>7}  vs 模型(b)={:>7}  {}  [{} ms]",
         tree.pieces,
-        model[0].pieces,
-        if tree.pieces == model[0].pieces {
+        model[1].pieces,
+        if tree.pieces == model[1].pieces {
             "OK"
         } else {
             "MISMATCH"
@@ -982,15 +981,15 @@ fn report_pathological() {
         full_d.pieces
     );
 
-    // 低规模对拍：PieceTree 不合并，和模型(a) 应逐片一致。
+    // 低规模对拍：PieceTree 的 R3 与模型(b) 应逐片一致。
     let small = uniform_byte_ops(20_000, PATHO_LEN, 0xBAD5_EED1);
-    let a = run_model(no_merge, &small, PATHO_LEN);
+    let b = run_model(merge_only, &small, PATHO_LEN);
     let tree = run_piece_tree(&small, PATHO_LEN);
     println!(
-        "对拍（2 万次随机）：模型(a)={} 片，PieceTree={} 片，{}",
-        a.pieces,
+        "对拍（2 万次随机）：模型(b)={} 片，PieceTree={} 片，{}",
+        b.pieces,
         tree.pieces,
-        if a.pieces == tree.pieces {
+        if b.pieces == tree.pieces {
             "OK"
         } else {
             "MISMATCH"

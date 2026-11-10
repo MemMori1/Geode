@@ -29,7 +29,10 @@ proptest! {
         let start = at.min(len) as usize;
         let n = want.min(shadow.len().saturating_sub(start));
         prop_assert_eq!(report.filled, n as u64);
-        prop_assert_eq!(report.eof_hit, at + (n as u64) >= len);
+        // 06 §3.1 / §4.2：`eof_hit` 表示"这次是短读"（撞到文件末尾），
+        // 而不是"读到的最后一个字节恰好是文件最后一个字节"。
+        // 恰好读到 EOF 时不算命中——否则调用方会误以为还有下一块。
+        prop_assert_eq!(report.eof_hit, at >= len || n < want);
         prop_assert_eq!(&out[..n], &shadow[start..start + n]);
         // 超出写入部分必须保持调用方原值（0），不得被"顺手填零"。
         prop_assert!(out[n..].iter().all(|b| *b == 0));

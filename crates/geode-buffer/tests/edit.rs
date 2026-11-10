@@ -169,3 +169,30 @@ fn default_undo_limit_matches_spec() {
     assert_eq!(default_undo_limit(100 << 20), 64 << 20);
     assert_eq!(default_undo_limit(30 << 30), 512 << 20);
 }
+
+#[test]
+fn close_inserts_do_not_merge_into_invalid_patch() {
+    // 插入会改变后续坐标；归并两个相距 ≤16 的插入会拼出一个"覆盖"语义的
+    // 假 patch（04 §4.5 要求 patch 是可顺序重放的记录，不是排序后的 diff）。
+    let mut ed = editor(b"abcdef");
+    ed.insert(1, b"X").unwrap();
+    ed.insert(2, b"Y").unwrap();
+
+    let patches = ed.patches();
+    assert_eq!(patches.len(), 2, "相邻插入必须各自成一条记录");
+    assert!(patches.iter().all(|p| p.kind == EditKind::Insert));
+    assert_eq!(patches[0].orig.len(), 0);
+    assert_eq!(patches[1].orig.len(), 0);
+    assert_eq!(ed.materialize(), b"aXYbcdef".to_vec());
+}
+
+#[test]
+fn overlapping_overwrites_do_not_merge() {
+    let mut ed = editor(b"0123456789");
+    ed.overwrite(4, b"AB").unwrap();
+    ed.overwrite(4, b"CD").unwrap(); // 同一位置覆盖，不得与前一条拼成重复字节
+
+    let patches = ed.patches();
+    assert_eq!(patches.len(), 2);
+    assert_eq!(ed.materialize(), b"0123CD6789".to_vec());
+}

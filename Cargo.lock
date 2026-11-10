@@ -381,6 +381,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "geode-project"
+version = "0.0.0"
+dependencies = [
+ "geode-buffer",
+ "geode-core",
+ "geode-format",
+ "geode-provider",
+]
+
+[[package]]
 name = "geode-provider"
 version = "0.0.0"
 dependencies = [

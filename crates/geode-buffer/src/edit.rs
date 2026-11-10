@@ -335,10 +335,16 @@ impl Editor {
 
     fn push_patch(&mut self, at: u64, old: Vec<u8>, new: Vec<u8>, kind: EditKind) {
         let orig_len = old.len() as u64;
+        let overwrite_like = |k: EditKind| matches!(k, EditKind::Overwrite | EditKind::Fill);
         let compatible = self.patches.last().is_some_and(|last| {
-            let gap = at.saturating_sub(last.orig.end().get());
-            gap <= PATCH_MERGE_GAP
-                && (kind == last.kind || last.kind == EditKind::Overwrite && kind == EditKind::Fill)
+            let last_end = last.orig.end().get();
+            // 只归并"等长替换"：插入/删除会改变后续坐标，归并后既不是合法的
+            // 连续区间替换，也无法用 orig 坐标重放（见 04 §4.5 的 seq 语义）。
+            // 另外必须严格向后（at >= last_end），否则重叠编辑会被拼成重复字节。
+            at >= last_end
+                && at - last_end <= PATCH_MERGE_GAP
+                && overwrite_like(kind)
+                && overwrite_like(last.kind)
         });
         if compatible {
             let last_end = self.patches.last().expect("刚判过非空").orig.end().get();
