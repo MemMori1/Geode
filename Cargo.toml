@@ -16,6 +16,7 @@ geode-provider = { path = "crates/geode-provider" }
 geode-buffer = { path = "crates/geode-buffer" }
 geode-search = { path = "crates/geode-search" }
 geode-ui = { path = "crates/geode-ui" }
+geode-bspec = { path = "crates/geode-bspec" }
 geode-analysis = { path = "crates/geode-analysis" }
 serde = { version = "1", features = ["derive"] }
 thiserror = "2"

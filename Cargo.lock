@@ -925,6 +925,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "geode-bspec"
+version = "0.0.0"
+dependencies = [
+ "geode-core",
+ "proptest",
+]
+
+[[package]]
 name = "geode-buffer"
 version = "0.0.0"
 dependencies = [

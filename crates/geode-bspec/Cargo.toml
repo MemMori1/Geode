@@ -1,0 +1,18 @@
+[package]
+name = "geode-bspec"
+description = "Geode 的结构描述语言 BinSpec：词法、语法、字节码、VM、Verifier（M3 A0/A1）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+geode-core = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true
