@@ -16,12 +16,12 @@
 
 ## 1 现在在哪（一句话）
 
-Sprint 0 的"尺子"基本造完（P1/P2/P3/P5、S1、S3 完成，P4 2/6）；M1 已开工：T1.1 写路径 2/4、T1.2 语义层 + 计数树落地（余 `PieceCursor` 沿树下降、R3 搬进树）、T1.3 3/5、T1.4 3/4、T1.5 3/4。M0 的四个 crate 全齐（`geode-annot` 已建），只差真实窗口的滚动 p99 测量。
+Sprint 0 的尺子基本造完（P1/P2/P3/P5、S1、S3 完成，P4 4/6）；M1 已过半：T1.1 写路径 2/4、**T1.2 计数树完成（含 TreeCursor 与树内 R3）**、T1.3 4/5、T1.4 3/4、T1.5 3/4、**T1.6 patch 桥完成**。M0 的四个 crate 全齐，只差真实窗口的滚动 p99 测量。
 
 | 里程碑 | 状态 | 出口条件（摘要） | 备注 |
 |---|---|---|---|
 | M0 骨架 | `[~]` 部分完成 | 打开 4GB <200ms ✓；滚动 p99 <25ms ✗（未测）；`xtask deps` + CI ✓；`--version/--help` ✓ | 四个 crate 齐；真实窗口滚动未测 |
-| M1 编辑与持久化 | `[~]` 已开工 | 见 §3 的 T1.1~T1.8，出口是 `18 §10` 的 M1 五条 | T1.1 2/4、T1.2 落地、T1.3 3/5、T1.4 3/4、T1.5 3/4；T1.6~T1.8 未开始 |
+| M1 编辑与持久化 | `[~]` 已过半 | 见 §3 的 T1.1~T1.8，出口是 `18 §10` 的 M1 五条 | T1.1 2/4、T1.2 ✅、T1.3 4/5、T1.4 3/4、T1.5 3/4、T1.6 ✅；T1.7~T1.9 未开始 |
 | M2 视图完备 | `[ ]` | — | 依赖 M1 |
 | M3 BinSpec v0.1 | `[ ]` | — | 依赖 M1/M2 |
 
@@ -36,7 +36,7 @@ Sprint 0 的"尺子"基本造完（P1/P2/P3/P5、S1、S3 完成，P4 2/6）；M1
 | P1 | 错误码登记表 + `xtask docs-errors`（双向校验 + 生成 `error_codes.rs`） | 0.3 | `cargo xtask docs-errors --check` 绿；126 码全登记；生成文件进 CI | `[x]` 2026-11-09（释义 54/126，余 72 条随 27 文档补） |
 | P2 | `schemas/*/v1.json` ×4（geopatch / geojournal / geows / geoproj） | 0.3 | 四个 schema 能被 `jsonschema` 校验器加载；与 23 §3 的字段表逐字段对齐 | `[x]` 4/4 + 2 份 `v1.layout.md`（二进制格式的字节表）；`xtask schema-check` 已接 CI |
 | P3 | `tests/vectors/` 每格式 ≥3 个损坏向量 | 0.2 | 每个损坏向量写明"期望哪个错误码"，CI 校验该码已登记 | `[x]` 结构完成：4 格式 16 条样本（含 12 条损坏），`xtask vectors-check` 双向校验；**字节级真跑待 M1 的 `geode-format`（`--run`）** |
-| P4 | bench 骨架（criterion，先 6 项：open_4gb / scroll_p99 / save_1gb / read_64k / edit_random / undo_all） | 0.3 | `cargo bench` 能跑；`xtask bench audit` 认得出 6 项与 00 §7 的对应关系 | `[~]` 2/6 实现（open_4gb 6.19 µs、read_64k 889 ns）；registry 已登记 4 项阻塞原因 |
+| P4 | bench 骨架（criterion，先 6 项：open_4gb / scroll_p99 / save_1gb / read_64k / edit_random / undo_all） | 0.3 | `cargo bench` 能跑；`xtask bench audit` 认得出 6 项与 00 §7 的对应关系 | `[~]` **4/6** 实现（open_4gb 6.19 µs、read_64k 889 ns、edit_random p99 105.9 µs、undo_all 717 ms 且逐字节相等）；余 scroll_p99、save_1gb |
 | P5 | proptest 骨架（piece table vs `Vec<u8>` 影子对拍） | 0.2 | 随机操作序列 1 万次，双实现对拍无差异（此时 buffer 还没有编辑，先锁只读读路径） | `[x]` 只读路径完成：`ByteRange` 5 条 + `Buffer::read` 2 条属性；编辑对拍随 T1.4/T1.5 接入 |
 | S1 | spike：placeholder 4 KiB 下限是否碎片化 | 0.5 | 1 万次随机编辑后 `piece ≤ O(C + 改动字节/4KiB)`、内存放大 <2× | `[x]` **通过**：1 万次编辑后 36 片（理论上界 88 片的 0.4×），描述子 1.1 KiB；无 R1 则 16,823 片（191×），证明 R1 是界的前提；见 `docs/spikes/S1-placeholder-fragmentation.md` |
 | S2 | spike：journal 不逐条 fsync 在 `kill -9` 下的丢帧窗口 | 0.3 | 1000 次随机时刻 kill：最大丢失 ≤1 秒编辑、恢复成功率 100% | `[ ]` |
@@ -53,11 +53,11 @@ Sprint 0 的"尺子"基本造完（P1/P2/P3/P5、S1、S3 完成，P4 2/6）；M1
 | ID | 任务 | 人日 | 验收 | 状态 |
 |---|---|---|---|---|
 | T1.1 | 写路径：`FileProvider` 可写（`pwrite`）+ `Caps::READ_WRITE_STABLE` + 短写重试 + `fsync` 语义 | 4 | 在 4 GiB 文件随机位置写 1 MiB，回读逐字节相等 | `[~]` **2/4**：`open_rw`/`write_at`/`write_all_at`（短写重试，0 字节写判错）/`sync_all`/`caps` 随句柄变 RW 已完成；**原子保存** `save_provider_atomic`（同目录临时文件 + fsync + rename + 刷目录 + 权限位保留 + 失败清理）已完成并有 4 条测试；**4 GiB 随机写 1 MiB 的验收尚未跑**（缺 B-tree，见 T1.2）；journal 未做 |
-| T1.2 | 计数 B-tree piece table：`Piece`(32B) / 叶 64 piece / fanout 64 / split / join / `PieceCursor` | 8 | 跨 100 piece 连续读 O(log N + 100)；与 `Vec<u8>` 对拍 | `[~]` **拆成 T1.2a 语义层（已完成）+ T1.2b 索引层（计数树已落地，余 `PieceCursor` 沿树下降、树内合并）**。T1.2a：`Piece::{Source,Literal}`、`PieceTable::{from_source,from_bytes,spans,overwrite,insert,remove}`、相邻 Source 连续即合并 / 相邻 Literal ≤64 KiB 合并、越界返回 `EditError` 不 panic；9 条测试 + 200 例 proptest 与 `Vec<u8>` 对拍。**T1.2b 未做**：计数 B-tree、`PieceCursor`、O(log N) 定位。**placeholder ≥4 KiB 降级也未做**——降级要读源字节，归到 T1.3 的 hydrate 路径（`piece.rs` 头部已写明，不静默填零）。**T1.2b 计数树已落地**（`tree.rs`：叶/节点 ≤64、每节点缓存字节数、按 bytes 下降、split/concat；10 万 piece 树高 ≤6，定位 0.48 µs 且与偏移无关；150 例随机编辑与 `PieceTable` 对拍）。**仍缺**：`PieceCursor` 沿树下降（现在还是 `PieceTable` 的平坦游标）、相邻 piece 合并没有搬进树、节点欠载未收紧 |
-| T1.3 | placeholder（≥4 KiB 阈值、R1 降级 / R2 禁升级 / R3 相邻合并）+ lazy file loading | 5 | 打开 4 GiB **不读一个字节**；首次滚动才填 | `[~]` **3/5**：`hydrate.rs` 完成 R1（`demote_small_placeholders`：<4 KiB 的 Source 读成 Literal，短读报错不填零）+ 局部 `defragment(at,len)`（把区间 literal 化，piece 数有界）+ 6 条测试；**未做**：R3 相邻合并搬进计数树、lazy loading 的按需填页（要 provider 页缓存）。`PieceTree` 已接 R1 与 defrag（3 条测试与 `PieceTable` 对拍） |
+| T1.2 | 计数 B-tree piece table：`Piece`(32B) / 叶 64 piece / fanout 64 / split / join / `PieceCursor` | 8 | 跨 100 piece 连续读 O(log N + 100)；与 `Vec<u8>` 对拍 | `[x]` **完成（T1.2a 语义层 + T1.2b 计数树）**。`TreeCursor` 沿树下降（路径栈、无 unsafe、均摊 O(1)），`concat` 做树内 R3 边界合并，`check_invariants` 六类检查。实测：10 万 piece 定位 0.48 µs（与偏移无关）、10k 次 1 字节覆盖后 14,170 片/height 30（R3 省 17.1%）、10k 次 append 后 2 片/height 0。T1.2a：`Piece::{Source,Literal}`、`PieceTable::{from_source,from_bytes,spans,overwrite,insert,remove}`、相邻 Source 连续即合并 / 相邻 Literal ≤64 KiB 合并、越界返回 `EditError` 不 panic；9 条测试 + 200 例 proptest 与 `Vec<u8>` 对拍。**T1.2b 未做**：计数 B-tree、`PieceCursor`、O(log N) 定位。**placeholder ≥4 KiB 降级也未做**——降级要读源字节，归到 T1.3 的 hydrate 路径（`piece.rs` 头部已写明，不静默填零）。**T1.2b 计数树已落地**（`tree.rs`：叶/节点 ≤64、每节点缓存字节数、按 bytes 下降、split/concat；10 万 piece 树高 ≤6，定位 0.48 µs 且与偏移无关；150 例随机编辑与 `PieceTable` 对拍）。**仍缺**：`PieceCursor` 沿树下降（现在还是 `PieceTable` 的平坦游标）、相邻 piece 合并没有搬进树、节点欠载未收紧 |
+| T1.3 | placeholder（≥4 KiB 阈值、R1 降级 / R2 禁升级 / R3 相邻合并）+ lazy file loading | 5 | 打开 4 GiB **不读一个字节**；首次滚动才填 | `[~]` **4/5**：`hydrate.rs` 完成 R1（`demote_small_placeholders`：<4 KiB 的 Source 读成 Literal，短读报错不填零）+ 局部 `defragment(at,len)`（把区间 literal 化，piece 数有界）+ 6 条测试；**已做**：R3 相邻合并进了计数树（`concat` 只查边界两片）；`PieceTree` 接 R1 与 defrag（3 条测试与 `PieceTable` 对拍）。**未做**：lazy loading 的按需填页（要 provider 页缓存） |
 | T1.4 | 覆盖编辑：`Overwrite` 默认、EOF 追加、nibble 400 ms 分组、`EditOp` 日志 | 4 | 输入 `41 42` 后字节变为 `41 42`，撤销一次回到原值 | `[~]` **3/4**：`edit.rs` 覆盖/插入/删除/填充、EOF 追加、nibble 400 ms 分组合并、patch 收集（间隙 ≤16 归并含 gap 字节）；余 `EditOp` 可序列化（给 journal） |
 | T1.5 | 撤销：操作日志 + 大操作 COW 快照；`undo_mem_limit = min(512MB, max(64MB, 2%×len))` | 4 | 1 万次随机编辑后全部撤销，文件逐字节相等（P5 对拍） | `[~]` **3/4**：操作日志撤销 + `undo_all`（2,000 次随机编辑对拍）+ `undo_mem_limit = min(512MB,max(64MB,2%×len))` 与超预算丢最早步；余大操作 COW 快照 |
-| T1.6 | patch 收集与合并（间隙 ≤16 归并）+ `.geopatch` 导出（`geode-format`，BE 定长帧 + 每记录 CRC32） | 3 | 导出再导入，字节等价；损坏向量产出指定 `EB` 码 | `[ ]` |
+| T1.6 | patch 收集与合并（间隙 ≤16 归并）+ `.geopatch` 导出（`geode-format`，BE 定长帧 + 每记录 CRC32） | 3 | 导出再导入，字节等价；损坏向量产出指定 `EB` 码 | `[x]` `geode-project` 桥接：`to_patch_file/from_patch_file/apply_patch_file`；64 MiB 源 500 次随机编辑逐字节对拍、4 GiB 稀疏源只读改动窗口；导入先全量校验再应用（失败不半应用）。**归并修正**：只允许等长替换（Overwrite/Fill）且 `at>=last_end`——相邻 Insert/Remove 归并会拼出非法区间 |
 | T1.7 | 保存事务：temp + `fsync(file)` + `fsync(dir)` + 原子 rename + 硬链接 `.bak` + 进度与取消 | 5 | 保存 1 GiB >500 MB/s；`kill -9` 后原文件不损坏 | `[ ]` |
 | T1.8 | journal 写入与恢复：80 B 头 + `kind│seq│len│payload│crc32`，四道关卡（magic/CRC/seq/指纹） | 5 | `kill -9` 重启提示"恢复 N 条修改"并成功恢复（S2 的结论写进文案） | `[ ]` |
 | T1.9 | M1 集成验收：把 `18 §10` M1 的五条跑成 CI 用例 | 2 | 五条全绿，作为 M1 的出口 | `[ ]` |
@@ -72,6 +72,8 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 日期 | 做了什么 | 证据 |
 |---|---|---|
 | 2026-11-10 | **S1 完成**：4 KiB + R1/R3 后 36 片（界内 0.4×）、描述子 1.1 KiB；无 R1 则 16,823 片（191×）；病态 1 MiB/10 万次 1 字节 ⇒ 不合并 182k 片、4 KiB 合并 17 片；指出 `04 §3.3` 两处措辞需修正 | `c112668` |
+| 2026-11-10 | **T1.2 收尾**：`TreeCursor` 沿树下降 + 树内 R3 边界合并 + `check_invariants`；10k 次 1 字节覆盖后 14,170 片（R3 省 17.1%），10k 次 append 后 2 片；`tree_cursor_matches_piece_cursor` 250 例对拍 | 本提交 |
+| 2026-11-10 | **T1.6 patch 桥**：`geode-project` 导出/导入/应用；修两个真问题——①相邻 Insert/Remove 被归并成非法区间（改为只归并等长替换）②`eof_hit` 语义与 06 §3.1 不符（短读才置位）；FinalLen 改用 EB014 | 本提交 |
 | 2026-11-10 | **T1.4 编辑会话**：`edit.rs` 覆盖/插入/删除/`fill`/`nibble`（400 ms 分组），逆操作撤销，patch 间隙 ≤16 归并（含 gap 字节）；10 条测试含 2,000 次随机编辑后 `undo_all` 逐字节相等；顺带修 `PieceTree::split` 在子节点边界 panic（proptest 抓到） | `1e64d1d` |
 | 2026-11-10 | **T1.5 撤销预算**：`min(512MB, max(64MB, 2%×len))`，`VecDeque` 撤销栈、超预算丢最早步且至少留一步；`default_undo_limit` 边界测试 | `226ebfa` |
 | 2026-11-10 | **geode-format 落地**：`.geopatch`/`.geojournal` 编解码，自实现 CRC32，8 条向量（6 条损坏）全过；`decode_prefix` 供 journal 前缀恢复；schema 枚举纠正 | `a11550c` |
@@ -120,9 +122,9 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 
 | 指标 | 当前值 | 目标 | 来源 |
 |---|---|---|---|
-| Rust 行数（不含生成） | 10,771 | — | `wc -l`（crates/app/xtask/bench） |
+| Rust 行数（不含生成） | 12,888 | — | `wc -l`（crates/app/xtask/bench） |
 | 提交数 | 28 | — | `git rev-list --count HEAD` |
-| 测试数 | **135** | M1 出口 ≥80 | `cargo test --workspace` |
+| 测试数 | **152** | M1 出口 ≥80 | `cargo test --workspace` |
 | 打开 4 GiB 稀疏文件 | 0.013 ms（app 端到端）/ 6.19 µs（bench 纯打开） | <200 ms | `app` / `bench open_4gb` |
 | release 二进制 | 461 KB | <15 MB | `ls -l` |
 | CI | 3 OS 绿 | 保持 | GitHub Actions |
