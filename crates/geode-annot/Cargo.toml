@@ -1,0 +1,23 @@
+[package]
+name = "geode-annot"
+description = "Geode 的标注区间索引：10 个图层、稳定 id、分块 max_end 剪枝查询"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+geode-core = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+criterion = { workspace = true }
+
+[[bench]]
+name = "annot"
+harness = false
+
+[lints]
+workspace = true
