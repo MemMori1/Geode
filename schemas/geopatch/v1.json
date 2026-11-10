@@ -38,8 +38,7 @@
               "checkpoint",
               "comment",
               "file_meta",
-              "final_len",
-              "save_mark"
+              "final_len"
             ]
           },
           "seq": {

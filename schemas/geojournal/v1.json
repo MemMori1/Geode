@@ -49,8 +49,6 @@
               "insert",
               "remove",
               "checkpoint",
-              "comment",
-              "file_meta",
               "final_len",
               "save_mark"
             ]

@@ -335,6 +335,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "geode-annot"
+version = "0.0.0"
+dependencies = [
+ "criterion",
+ "geode-core",
+ "proptest",
+]
+
+[[package]]
 name = "geode-bench"
 version = "0.0.0"
 dependencies = [
@@ -361,6 +370,14 @@ dependencies = [
  "proptest",
  "serde",
  "thiserror",
+]
+
+[[package]]
+name = "geode-format"
+version = "0.0.0"
+dependencies = [
+ "geode-core",
+ "toml",
 ]
 
 [[package]]
