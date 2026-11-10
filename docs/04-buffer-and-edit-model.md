@@ -110,7 +110,7 @@ pub struct PieceBuffer {
   - **R1 降级**：任何操作后若某 placeholder 片段 `len < 4096`，整段读入并替换为 literal（≤4KB 内存/次）⇒ 保证所有 placeholder ≥ 4KB。
   - **R2 禁止升级**：literal 永不"变回" placeholder——原文件内容一旦被改，provider 上仍是旧值，升级会静默出错。
   - **R3 相邻 literal 合并**：同叶相邻两 literal，若 `Arc::strong_count == 1` 且 `src_off` 相邻 ⇒ 原地拼接（单次 ≤ `coalesce_max_bytes` = 1MB，超阈值保留分片）。
-- **piece 数上界（对"1 字节 literal / 1 字节 placeholder 交替"的证伪）**：设改动簇（连续编辑区）为 C。R3 使簇内反复编辑不增加片段；每簇最多切碎原文件 2 处，切出的碎片若 <4KB 立即被 R1 literal 化（不再产生新边界）。故 **piece 数 ≤ O(C + 改动字节/4KB)，与编辑次数无关**。反例：min=1 且无 R1 时，"0x1000 改 1 字节、0x1001 改 1 字节…"产生交替结构，1MB → 50 万片（16MB 描述子），即 01 §3.1 坑 4（Tatham 文末警告）；加上 R1+R3 后同一场景 = 1 个 1MB literal、0 个 placeholder。
+- **piece 数上界（对"1 字节 literal / 1 字节 placeholder 交替"的证伪）**：设改动簇（连续编辑区）为 C。R3 使簇内反复编辑不增加片段；每簇最多切碎原文件 2 处，切出的碎片若 <4KB 立即被 R1 literal 化（不再产生新边界）。故 **在 R1 与 R3 同时生效时**，piece 数 ≤ O(C + 改动字节/4KB)，与编辑次数无关（**这条界是 R1 的产物，不是自然成立的**：实测关掉 R1 时 1 万次编辑产生 16,823 片 = 界的 191 倍，见 `docs/spikes/S1-placeholder-fragmentation.md`）。反例：min=1 且无 R1 时，"0x1000 改 1 字节、0x1001 改 1 字节…"产生交替结构，1MB → 50 万片（16MB 描述子），即 01 §3.1 坑 4（Tatham 文末警告）；加上 R1+R3 后同一场景 = 16 个 64 KiB literal + 少量边界片（**不是 1 片**：literal 合并上限 `MAX_LITERAL = 64 KiB`，故下限是 `文件大小/64 KiB + C` 片），0 个 placeholder。
 
 ### 3.4 literal 容器与 COW 粒度
 | 方案 | 结论 |
