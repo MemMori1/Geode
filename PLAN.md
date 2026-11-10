@@ -53,7 +53,7 @@ Sprint 0 的"尺子"基本造完（P1/P2/P3/P5 与 S3 已完成，P4 2/6），M1
 | ID | 任务 | 人日 | 验收 | 状态 |
 |---|---|---|---|---|
 | T1.1 | 写路径：`FileProvider` 可写（`pwrite`）+ `Caps::READ_WRITE_STABLE` + 短写重试 + `fsync` 语义 | 4 | 在 4 GiB 文件随机位置写 1 MiB，回读逐字节相等 | `[~]` **2/4**：`open_rw`/`write_at`/`write_all_at`（短写重试，0 字节写判错）/`sync_all`/`caps` 随句柄变 RW 已完成；**原子保存** `save_provider_atomic`（同目录临时文件 + fsync + rename + 刷目录 + 权限位保留 + 失败清理）已完成并有 4 条测试；**4 GiB 随机写 1 MiB 的验收尚未跑**（缺 B-tree，见 T1.2）；journal 未做 |
-| T1.2 | 计数 B-tree piece table：`Piece`(32B) / 叶 64 piece / fanout 64 / split / join / `PieceCursor` | 8 | 跨 100 piece 连续读 O(log N + 100)；与 `Vec<u8>` 对拍 | `[~]` **拆成 T1.2a 语义层（已完成）+ T1.2b 索引层（未开始）**。T1.2a：`Piece::{Source,Literal}`、`PieceTable::{from_source,from_bytes,spans,overwrite,insert,remove}`、相邻 Source 连续即合并 / 相邻 Literal ≤64 KiB 合并、越界返回 `EditError` 不 panic；9 条测试 + 200 例 proptest 与 `Vec<u8>` 对拍。**T1.2b 未做**：计数 B-tree、`PieceCursor`、O(log N) 定位。**placeholder ≥4 KiB 降级也未做**——降级要读源字节，归到 T1.3 的 hydrate 路径（`piece.rs` 头部已写明，不静默填零） |
+| T1.2 | 计数 B-tree piece table：`Piece`(32B) / 叶 64 piece / fanout 64 / split / join / `PieceCursor` | 8 | 跨 100 piece 连续读 O(log N + 100)；与 `Vec<u8>` 对拍 | `[~]` **拆成 T1.2a 语义层（已完成）+ T1.2b 索引层（未开始）**。T1.2a：`Piece::{Source,Literal}`、`PieceTable::{from_source,from_bytes,spans,overwrite,insert,remove}`、相邻 Source 连续即合并 / 相邻 Literal ≤64 KiB 合并、越界返回 `EditError` 不 panic；9 条测试 + 200 例 proptest 与 `Vec<u8>` 对拍。**T1.2b 未做**：计数 B-tree、`PieceCursor`、O(log N) 定位。**placeholder ≥4 KiB 降级也未做**——降级要读源字节，归到 T1.3 的 hydrate 路径（`piece.rs` 头部已写明，不静默填零）。**T1.2b 计数树已落地**（`tree.rs`：叶/节点 ≤64、每节点缓存字节数、按 bytes 下降、split/concat；10 万 piece 树高 ≤6，定位 0.48 µs 且与偏移无关；150 例随机编辑与 `PieceTable` 对拍）。**仍缺**：`PieceCursor` 沿树下降（现在还是 `PieceTable` 的平坦游标）、相邻 piece 合并没有搬进树、节点欠载未收紧 |
 | T1.3 | placeholder（≥4 KiB 阈值、R1 降级 / R2 禁升级 / R3 相邻合并）+ lazy file loading | 5 | 打开 4 GiB **不读一个字节**；首次滚动才填 | `[ ]` |
 | T1.4 | 覆盖编辑：`Overwrite` 默认、EOF 追加、nibble 400 ms 分组、`EditOp` 日志 | 4 | 输入 `41 42` 后字节变为 `41 42`，撤销一次回到原值 | `[ ]` |
 | T1.5 | 撤销：操作日志 + 大操作 COW 快照；`undo_mem_limit = min(512MB, max(64MB, 2%×len))` | 4 | 1 万次随机编辑后全部撤销，文件逐字节相等（P5 对拍） | `[ ]` |
@@ -75,6 +75,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 2026-11-09 | **P1 完成**：建 `docs/errors.toml`（126 码唯一事实来源）+ `xtask docs-errors`（双向校验 + 生成 `crates/geode-core/src/error_codes.rs`）+ CI 加 `--check`；测试 31 → 33 | `d0627c2` |
 | 2026-11-09 | **P5 完成（只读路径）**：7 条 proptest 属性（`ByteRange` 5 + `Buffer::read` 2）；属性测试当场抓出 `clip` 的 `Option` 永远为 `Some` 的假信号，已改为返回 `Self` | 见下一次提交 |
 | 2026-11-09 | **P2 完成**：补齐 `geopatch`/`geojournal` 的 schema 与 `v1.layout.md`（头 32/80 B、帧格式、CRC 覆盖范围），并纠正 23 §3.6 示例里 `payload_len=09` 的排版错误（Overwrite 恒为 16+len） | 见下一次提交 |
+| 2026-11-10 | **T1.2b 计数树落地**：`PieceTree` 叶/节点 ≤64、缓存子树字节、按 bytes 下降；10 万 piece 定位 0.48 µs（与偏移、规模无关），树高 ≤6；150 例随机编辑与语义层对拍。**偏差**：允许子节点高度不一致（非严格 B-tree，ADR-0019）；合并不在树内做 | 本提交 |
 | 2026-11-09 | **T1.2b 基尺**：`benches/piece.rs` 实测 flat Vec 的定位/编辑随 piece 数线性增长（2,048 piece：定位 1.11 µs、编辑 28.2 µs；外推 10 万 piece：54 µs / 1.4 ms，一帧 68 次定位 ≈3.7 ms）。新增 `check_invariants()`（4 类结构错误）与 `PieceCursor`（跨 piece 顺序读）；见 `docs/spikes/T1.2b-baseline.md`。B-tree 未写 | 本提交 |
 | 2026-11-09 | **T1.2a 完成**：piece table 语义层 + 9 条测试（含 200 例随机编辑对拍）；抓到并修掉一个真 bug——`split_at` 在 `at` 恰好是边界时返回 `OutOfRange`，导致"插入后马上删除"必失败。**索引层 T1.2b 未开始** | 本提交 |
 | 2026-11-09 | **T1.1 第一片**：`FileProvider::open_rw/write_at/write_all_at/sync_all`、`geode-buffer::save::save_provider_atomic`（临时文件→fsync→rename→刷目录，保留权限位，失败不留垃圾）；4 条 save 测试 + 3 条 provider 写测试；测试 45→48。**未做**：4 GiB 随机写验收（等 T1.2）、journal | 本提交 |
@@ -113,7 +114,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 指标 | 当前值 | 目标 | 来源 |
 |---|---|---|---|
 | Rust 行数（不含生成） | 2052 | — | `tokei`/`wc` |
-| 测试数 | **60** | M1 出口 ≥80 | `cargo test` |
+| 测试数 | **64** | M1 出口 ≥80 | `cargo test` |
 | 打开 4 GiB 稀疏文件 | 0.013 ms（app 端到端）/ 6.19 µs（bench 纯打开） | <200 ms | `app` / `bench open_4gb` |
 | release 二进制 | 461 KB | <15 MB | `ls -l` |
 | CI | 3 OS 绿 | 保持 | GitHub Actions |

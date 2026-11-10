@@ -18,6 +18,7 @@ use std::fmt;
 
 pub mod piece;
 pub mod save;
+pub mod tree;
 
 pub use geode_core::Version;
 

@@ -4,7 +4,8 @@
 //! 每次 `spans` 都要从第一个 piece 线性扫到目标偏移，编辑要 `Vec::splice`。
 
 use criterion::{BatchSize, Criterion, criterion_group, criterion_main};
-use geode_buffer::piece::PieceTable;
+use geode_buffer::piece::{Piece, PieceTable};
+use geode_buffer::tree::PieceTree;
 use std::hint::black_box;
 
 /// 在 64 KiB 源上制造 `n` 个碎片：每隔一段做一次 1 字节覆盖。
@@ -15,6 +16,28 @@ fn fragmented(n: usize) -> PieceTable {
         t.overwrite(at, &[0xEE]).unwrap();
     }
     t
+}
+
+fn tree_of(n: usize) -> PieceTree {
+    let pieces: Vec<Piece> = (0..n)
+        .map(|i| Piece::Literal(vec![i as u8].into()))
+        .collect();
+    PieceTree::from_pieces(pieces, 0)
+}
+
+fn bench_tree_locate(c: &mut Criterion) {
+    let mut g = c.benchmark_group("tree_locate");
+    for n in [2_048usize, 100_000] {
+        let t = tree_of(n);
+        let len = t.len();
+        g.bench_function(format!("{n}_pieces_at_end"), |b| {
+            b.iter(|| black_box(black_box(&t).spans(len - 64, 64).len()));
+        });
+        g.bench_function(format!("{n}_pieces_at_start"), |b| {
+            b.iter(|| black_box(black_box(&t).spans(0, 64).len()));
+        });
+    }
+    g.finish();
 }
 
 fn bench_locate(c: &mut Criterion) {
@@ -53,7 +76,7 @@ fn bench_edit(c: &mut Criterion) {
 #[allow(missing_docs)]
 mod bench_entry {
     use super::*;
-    criterion_group!(benches, bench_locate, bench_edit);
+    criterion_group!(benches, bench_locate, bench_edit, bench_tree_locate);
 }
 
 criterion_main!(bench_entry::benches);
