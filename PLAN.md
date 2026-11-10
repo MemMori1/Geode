@@ -71,6 +71,10 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 
 | 日期 | 做了什么 | 证据 |
 |---|---|---|
+| 2026-11-10 | **T1.4 编辑会话**：`edit.rs` 覆盖/插入/删除/`fill`/`nibble`（400 ms 分组），逆操作撤销，patch 间隙 ≤16 归并（含 gap 字节）；10 条测试含 2,000 次随机编辑后 `undo_all` 逐字节相等；顺带修 `PieceTree::split` 在子节点边界 panic（proptest 抓到） | `1e64d1d` |
+| 2026-11-10 | **T1.5 撤销预算**：`min(512MB, max(64MB, 2%×len))`，`VecDeque` 撤销栈、超预算丢最早步且至少留一步；`default_undo_limit` 边界测试 | `226ebfa` |
+| 2026-11-10 | **geode-format 落地**：`.geopatch`/`.geojournal` 编解码，自实现 CRC32，8 条向量（6 条损坏）全过；`decode_prefix` 供 journal 前缀恢复；schema 枚举纠正 | `a11550c` |
+| 2026-11-10 | **geode-annot 落地**：10 层 z 序 + 分块 max_end 线段树，10 万条 `query_point` 162 ns；17 单测 + 3 proptest 对拍朴素 oracle | `7878a50` |
 | 2026-11-09 | 文档收口：M0 实现状态、M1 前置工件、4 项 spike 写进 `18 §10.1~10.4`；README 增「开工前清单」 | `7d0d7a2` |
 | 2026-11-09 | **P1 完成**：建 `docs/errors.toml`（126 码唯一事实来源）+ `xtask docs-errors`（双向校验 + 生成 `crates/geode-core/src/error_codes.rs`）+ CI 加 `--check`；测试 31 → 33 | `d0627c2` |
 | 2026-11-09 | **P5 完成（只读路径）**：7 条 proptest 属性（`ByteRange` 5 + `Buffer::read` 2）；属性测试当场抓出 `clip` 的 `Option` 永远为 `Some` 的假信号，已改为返回 `Self` | 见下一次提交 |
@@ -116,7 +120,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | 指标 | 当前值 | 目标 | 来源 |
 |---|---|---|---|
 | Rust 行数（不含生成） | 2052 | — | `tokei`/`wc` |
-| 测试数 | **73** | M1 出口 ≥80 | `cargo test` |
+| 测试数 | **135** | M1 出口 ≥80 | `cargo test --workspace` |
 | 打开 4 GiB 稀疏文件 | 0.013 ms（app 端到端）/ 6.19 µs（bench 纯打开） | <200 ms | `app` / `bench open_4gb` |
 | release 二进制 | 461 KB | <15 MB | `ls -l` |
 | CI | 3 OS 绿 | 保持 | GitHub Actions |
