@@ -74,7 +74,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | ID | 任务 | 人日 | 验收 | 状态 |
 |---|---|---|---|---|
 | T2.1 | 窗口骨架：eframe 窗口 + 自绘比例尺滚动条（u64 行号，禁用 `egui::ScrollArea`） | 6 | 4 GiB 文件滚动 p99 <25 ms 持续 30 s（M0②） | `[~]` **代码完成**：`app/src/window.rs`（eframe 0.32 + 自绘 thumb + 拖拽/滚轮/PageUp/Down/Home/End），滚动位置存 `top_row:u64`；**p99 未测**（需真实显示器与 30 s 采样） |
-| T2.2 | 网格渲染：列配置 8/16/32/64、分组 1/2/4/8、radix、Sarasa 图集、乘法定位 | 7 | 切换后列对齐不裂；像素快照零容差 | `[~]` **3/5**：bpr 8/16/32/64 与 group 1/2/4/8 可切、`format_row` 纯函数（短行补满、列宽不漂）、偏移/ASCII 列已画；**未做** radix 切换、Sarasa 字体嵌入、像素快照基线 |
+| T2.2 | 网格渲染：列配置 8/16/32/64、分组 1/2/4/8、radix、Sarasa 图集、乘法定位 | 7 | 切换后列对齐不裂；像素快照零容差 | `[~]` **4/5**：bpr/group ✅、radix Hex/Dec/Oct 三态 ✅（`geode-ui::grid::RowFormat`，三种进制列宽统一 3 字符）、`format_row` 40~52 ns/行；**未做** Sarasa 字体嵌入、像素快照基线 |
 | T2.3 | 光标与选区模型：线性/矩形、锚点-焦点、拖拽、键盘扩展、多字节选 | 5 | 100 万字节矩形拖选 <16 ms/帧 | `[x]` **完成**：`selection.rs` 485 行，`Pos/SelectionKind/Selection/Cursor`，13 单测 + 3 组确定性属性测试（区间不重叠、总长 ≤ len） |
 | T2.4 | 高亮合成：10 层 z 序、最高不透明层定底、前景对比度 ≥4.5:1、装饰通道 | 4 | 色盲可辨；不产生新色相 | `[x]` **完成**：`composite.rs` 688 行，10 层 `Layer`、WCAG 对比度、压暗 ΔL≤0.20、4 种装饰通道，16 单测 + 3 组属性测试（合成后 fg ≥4.5:1） |
 | T2.5 | Inspector：u8~u128/u24/u48/f16~f64/bool/char/时间戳/GUID/RGBA8/LEB128 解码与反写 | 4 | 全类型往返一致 | `[x]` **完成**：`core/inspector.rs` 1035 行，20 类型 × 双端序往返、i24/i48 符号扩展、f16 特殊值、GUID/LEB128/5 种时间戳，28 测试（含 3 proptest） |
@@ -90,9 +90,9 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 
 | ID | 任务 | 人日 | 验收 | 状态 |
 |---|---|---|---|---|
-| A0 | 词法/语法/AST/`SrcSpan`+`LineIndex`/错误恢复 | 15 | 解析 02 §11 全部示例；一次报 ≥3 个错 | `[~]` 派工中 |
-| A1 | 字节码 + VM（预算、取消、软失败、`Node` 树） | 18 | 死循环 5s 内 E2001；越界字段降级 unknown | `[~]` 派工中 |
-| A1.5 | Verifier：I2/I4/I6/I7/I9/I10 + 配置 + 报告 | 12 | 可脱离 AI 单用；误报率 <5% | `[~]` 骨架完成（`verify.rs`，5 测试） |
+| A0 | 词法/语法/AST/`SrcSpan`+`LineIndex`/错误恢复 | 15 | 解析 02 §11 全部示例；一次报 ≥3 个错 | `[x]` **完成**：lexer 1274 + parser 1884 + ast 672 + span 243 + diag 187 = 4260 行；31 前端测试（含 3 proptest）；一次报 3 错；与 02 的 9 条偏差已记录（词法码暂用 E4001、`Diag.range` 暂存源 span） |
+| A1 | 字节码 + VM（预算、取消、软失败、`Node` 树） | 18 | 死循环 5s 内 E2001；越界字段降级 unknown | `[~]` **16/18**：`bytecode.rs` 982 行（39 指令 + 16 B 定长编码 + `Program::encode/decode`）、`vm.rs` 2107 行（预算/取消/软失败/unknown 降级/`Node` 树）；33 测试；**缺 AST→字节码编译器**（A0 的 AST 与 A1 的 `Op` 尚未接线） |
+| A1.5 | Verifier：I2/I4/I6/I7/I9/I10 + 配置 + 报告 | 12 | 可脱离 AI 单用；误报率 <5% | `[x]` **骨架完成**：`verify.rs` 243 行、6 条不变量、`VerifyCfg`/`VerifyReport`、5 测试；**待接入编译器输出** |
 | A2 | 结构树 UI + 双向联动（`Layer::Structure`） | 15 | 点树跳 hex、点 hex 反查 <10ms | `[ ]` |
 | A3 | `.gmagic` 匹配 + 模板自动加载编排 | 8 | 206 格式规则集可加载 | `[ ]` |
 | A4 | 增量重解析（顶层 `@` 单元 + dirty ranges） | 12 | 改 1 字节只重解析受影响单元 | `[ ]` |
@@ -103,6 +103,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 
 ## 4 进度日志（只追加，不改旧行）
 
+- 2026-11-10 M3 A0/A1 落地：`geode-bspec` 4.3k 行前端 + 3.1k 行字节码/VM，424 测试；M2 收尾 radix+ScrollModel 完成（`format_row` 40 ns）。
 - 2026-11-10 M3 开工：A0 前端、A1 字节码 VM 派工；A1.5 Verifier 骨架落地（`crates/geode-bspec/src/verify.rs`，I2/I4/I6/I7/I9/I10，5 测试）；M2 收尾（radix + ScrollModel + bench）并行。
 - 2026-11-10 M2 第一波：T2.3/T2.4/T2.5/T2.6/T2.7 完成，T2.1 代码完成、T2.2 3/5；新增 `geode-search`、`geode-analysis` 两个 crate；测试 194→331。
 

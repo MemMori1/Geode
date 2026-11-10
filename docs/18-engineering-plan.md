@@ -321,6 +321,7 @@ jobs:
 | **M1** | **代码完成，待集成验收**（2026-11-10） | `geode-buffer`：piece table 语义层 + 计数树（`TreeCursor`/树内 R3/不变量）、R1 降级与局部 defrag、lazy 填页、覆盖编辑与 nibble 分组、撤销（逆操作 + ≥1 MiB COW 快照）、`EditOp` 编解码、原子保存（`.bak`/进度/取消）、journal 写入与四道关卡恢复；`geode-format`：patch/journal 编解码；`geode-project`：patch 桥；`geode-provider`：页缓存与 `CachedProvider` | T1.9 集成验收（`18 §10` M1 五条跑成 CI 用例）；`save_1gb` 吞吐在本机磁盘上 110.9 MiB/s（同卷 `dd` 116.7 MB/s，硬件限制）；4 GiB 整文件保存测试因磁盘不足 `#[ignore]` | 16,325 行 Rust、191 测试、`clippy -D warnings` 干净；4 GiB 偏移写 1 MiB 回读逐字节相等；10,000 次随机编辑 `undo_all` 逐字节相等；S2 100 次 kill -9 恢复 100/100、Partial 0、最多丢 62 帧 |
 
 | **M2** | **进行中**（2026-11-10） | T2.3 选区模型、T2.4 高亮合成、T2.5 Inspector（20 类型/双端序/28 测试）、T2.6 四引擎搜索（43 测试，hex 1715 MiB/s）、T2.7 分析工具箱（单遍多分析器）；T2.1 窗口骨架（eframe + 自绘比例尺滚动条）代码完成 | T2.1 的 p99 实测、T2.2 的 radix/Sarasa 图集/像素基线、T2.8 性能与基线 | 331 测试；新增 `geode-search`（2382 行）、`geode-analysis`（2030 行）、`core/inspector.rs`（1035 行） |
+| **M3** | **进行中**（2026-11-10） | A0 前端（lexer/parser/AST，4260 行，31 测试）、A1 字节码+VM（3089 行，39 指令，33 测试）、A1.5 Verifier 骨架（6 条不变量，5 测试） | **AST→字节码编译器未接**（A0 的 AST 与 A1 的 `Op` 之间还缺一层）；A2 结构树 UI、A3 magic、A4 增量未开 | 424 测试；`geode-bspec` 7.3k 行 |
 
 **M0①（打开 4GB <200ms）已达成；M0②（滚动 p99 <25ms）未测**——它需要 `geode-ui` 的网格落地后接 21 §5.2 的 `scroll_p99`，不在读路径上。
 

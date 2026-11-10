@@ -4,24 +4,26 @@
 //! 16-ui-shell-theme-i18n.md §3.1（布局）、26-visual-design.md §4（色与字阶）。
 //!
 //! 这一版刻意**不用** `egui::ScrollArea`：它内部用 f32 累加偏移，行数到 1e7 量级
-//! 后精度耗尽、拖动会"粘住"。这里把滚动位置存成 `top_row: u64`，滚动条按
-//! "比例尺"画：thumb 长度 = 可见行 / 总行，位置 = top_row / 总行。
+//! 后精度耗尽、拖动会"粘住"。滚动状态收敛到 `geode_ui::scroll::ScrollModel`：
+//! 行号是 u64，滚动条按比例尺画（thumb 长度 = 可见行 / 总行）。
 
 use eframe::egui;
 use geode_buffer::Buffer;
 use geode_core::Offset;
 use geode_provider::FileProvider;
 use geode_provider::page_cache::CachedProvider;
+use geode_ui::grid::{Radix, RowFormat, format_row};
+use geode_ui::scroll::ScrollModel;
 
 const ROW_PAD: f32 = 2.0;
 const SCROLLBAR_W: f32 = 12.0;
-const MIN_THUMB_H: f32 = 24.0;
 
-/// 视图参数：每行字节数与分组宽度。
+/// 视图参数：每行字节数、分组宽度与显示进制。
 #[derive(Debug, Clone, Copy)]
 struct ViewParams {
     bytes_per_row: u32,
     group: u32,
+    radix: Radix,
 }
 
 impl Default for ViewParams {
@@ -29,6 +31,7 @@ impl Default for ViewParams {
         Self {
             bytes_per_row: 16,
             group: 2,
+            radix: Radix::Hex,
         }
     }
 }
@@ -36,36 +39,11 @@ impl Default for ViewParams {
 struct HexApp {
     buffer: Buffer,
     params: ViewParams,
-    /// 顶部可见行号（u64，绝不转 f32 存储）。
-    top_row: u64,
+    /// 比例尺滚动状态（行号 u64，绝不把像素偏移存成 f32）。
+    scroll: ScrollModel,
     /// 游标字节偏移。
     cursor: u64,
     path: String,
-}
-
-/// 把一行字节格式化成 hex 列与 ASCII 列（纯函数，便于单测）。
-///
-/// 短行补空格到满行，保证后面列不会因为最后一行短而左移。
-fn format_row(bytes: &[u8], bytes_per_row: usize, group: usize) -> (String, String) {
-    let mut hex = String::with_capacity(bytes_per_row * 3 + bytes_per_row / group.max(1));
-    let mut ascii = String::with_capacity(bytes_per_row);
-    for i in 0..bytes_per_row {
-        if i > 0 && group > 0 && i % group == 0 {
-            hex.push(' ');
-        }
-        match bytes.get(i) {
-            Some(b) => {
-                hex.push_str(&format!("{b:02X}"));
-                ascii.push(if (0x20..=0x7e).contains(b) {
-                    *b as char
-                } else {
-                    '.'
-                });
-            }
-            None => hex.push_str("  "),
-        }
-    }
-    (hex, ascii)
 }
 
 impl HexApp {
@@ -75,7 +53,7 @@ impl HexApp {
         Ok(Self {
             buffer,
             params: ViewParams::default(),
-            top_row: 0,
+            scroll: ScrollModel::default(),
             cursor: 0,
             path: path.display().to_string(),
         })
@@ -88,13 +66,18 @@ impl HexApp {
 
     fn row_text(&self, row: u64) -> (String, String) {
         let bpr = u64::from(self.params.bytes_per_row);
-        let at = row * bpr;
+        let at = row.saturating_mul(bpr);
         let want = bpr.min(self.buffer.len().saturating_sub(at)) as usize;
         let mut bytes = vec![0u8; want];
         if want > 0 {
             let _ = self.buffer.read(Offset::new(at), &mut bytes);
         }
-        format_row(&bytes, bpr as usize, self.params.group as usize)
+        let fmt = RowFormat {
+            bpr: bpr as usize,
+            group: self.params.group as usize,
+            radix: self.params.radix,
+        };
+        format_row(&bytes, &fmt)
     }
 }
 
@@ -107,13 +90,18 @@ impl eframe::App for HexApp {
             .floor()
             .max(1.0) as u64;
 
+        // 每帧把文档规模同步给滚动模型；换行宽/窗口缩放后重新夹紧顶部行号。
+        self.scroll.total_rows = total_rows;
+        self.scroll.visible_rows = visible_rows;
+        self.scroll.top_row = self.scroll.top_row.min(self.scroll.max_top());
+
         // ---- 键盘与滚轮（先处理输入，再画）----
         let mut delta_rows = 0i64;
         ctx.input(|i| {
             for ev in &i.events {
                 match ev {
                     egui::Event::MouseWheel { delta, .. } => {
-                        delta_rows -= (delta.y / cell_h).round() as i64;
+                        delta_rows = delta_rows.saturating_sub((delta.y / cell_h).round() as i64);
                     }
                     egui::Event::Key {
                         key,
@@ -121,15 +109,21 @@ impl eframe::App for HexApp {
                         modifiers,
                         ..
                     } => match key {
-                        egui::Key::ArrowDown => delta_rows += 1,
-                        egui::Key::ArrowUp => delta_rows -= 1,
-                        egui::Key::PageDown => delta_rows += visible_rows as i64,
-                        egui::Key::PageUp => delta_rows -= visible_rows as i64,
-                        egui::Key::Home => delta_rows = -(total_rows as i64),
-                        egui::Key::End => delta_rows = total_rows as i64,
+                        egui::Key::ArrowDown => delta_rows = delta_rows.saturating_add(1),
+                        egui::Key::ArrowUp => delta_rows = delta_rows.saturating_sub(1),
+                        egui::Key::PageDown => {
+                            delta_rows = delta_rows.saturating_add(visible_rows as i64);
+                        }
+                        egui::Key::PageUp => {
+                            delta_rows = delta_rows.saturating_sub(visible_rows as i64);
+                        }
+                        egui::Key::Home => delta_rows = i64::MIN,
+                        egui::Key::End => delta_rows = i64::MAX,
                         egui::Key::ArrowRight => {
-                            self.cursor =
-                                (self.cursor + 1).min(self.buffer.len().saturating_sub(1));
+                            self.cursor = self
+                                .cursor
+                                .saturating_add(1)
+                                .min(self.buffer.len().saturating_sub(1));
                         }
                         egui::Key::ArrowLeft => {
                             self.cursor = self.cursor.saturating_sub(1);
@@ -142,8 +136,7 @@ impl eframe::App for HexApp {
                 }
             }
         });
-        let new_top = (self.top_row as i64 + delta_rows).clamp(0, total_rows as i64) as u64;
-        self.top_row = new_top.min(total_rows.saturating_sub(1));
+        self.scroll.scroll_by(delta_rows);
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.horizontal(|ui| {
@@ -170,6 +163,20 @@ impl eframe::App for HexApp {
                         self.params.group = g;
                     }
                 }
+                ui.separator();
+                ui.label("进制");
+                for (radix, label) in [
+                    (Radix::Hex, "Hex"),
+                    (Radix::Dec, "Dec"),
+                    (Radix::Oct, "Oct"),
+                ] {
+                    if ui
+                        .selectable_label(self.params.radix == radix, label)
+                        .clicked()
+                    {
+                        self.params.radix = radix;
+                    }
+                }
             });
         });
 
@@ -179,9 +186,16 @@ impl eframe::App for HexApp {
                 ui.separator();
                 ui.label(format!("长度 {}", self.buffer.len()));
                 ui.separator();
-                ui.label(format!("行 {}/{}", self.top_row + 1, total_rows));
+                ui.label(format!(
+                    "行 {}/{}",
+                    self.scroll.top_row.saturating_add(1),
+                    total_rows
+                ));
                 ui.separator();
-                ui.label(format!("bpr {} / group {}", bpr, self.params.group));
+                ui.label(format!(
+                    "bpr {} / group {} / {:?}",
+                    bpr, self.params.group, self.params.radix
+                ));
             });
         });
 
@@ -194,17 +208,25 @@ impl eframe::App for HexApp {
 
             // 偏移列宽：10 个 hex 位 + 2 空格
             let offset_w = char_w * 10.0 + char_w;
-            let ascii_x = rect.left() + offset_w + char_w * (f32::from(bpr as u16) * 3.0 + 4.0);
+            // 每字节固定 3 字符列，组间再加 1 个空格；ASCII 列起点因此不随进制变化。
+            let groups = bpr.div_ceil(self.params.group.max(1));
+            let hex_cols = f32::from(bpr as u16) * 3.0 + groups.saturating_sub(1) as f32;
+            let ascii_x = rect.left() + offset_w + char_w * (hex_cols + 2.0);
 
-            let first = self.top_row;
-            let last = (self.top_row + visible_rows + 1).min(total_rows);
+            let first = self.scroll.top_row;
+            let last = self
+                .scroll
+                .top_row
+                .saturating_add(visible_rows)
+                .saturating_add(1)
+                .min(total_rows);
             for row in first..last {
                 let y = rect.top() + (row - first) as f32 * row_h;
                 let (hex, ascii) = self.row_text(row);
                 painter.text(
                     egui::pos2(rect.left(), y),
                     egui::Align2::LEFT_TOP,
-                    format!("{:010X}", row * u64::from(bpr)),
+                    format!("{:010X}", row.saturating_mul(u64::from(bpr))),
                     mono.clone(),
                     ui.visuals().weak_text_color(),
                 );
@@ -228,18 +250,25 @@ impl eframe::App for HexApp {
             let cur_row = self.cursor / u64::from(bpr);
             if cur_row >= first && cur_row < last {
                 let col = (self.cursor % u64::from(bpr)) as f32;
-                let group_gap = (col / self.params.group as f32).floor() * char_w;
+                let group_gap = (col / self.params.group.max(1) as f32).floor() * char_w;
                 let x = rect.left() + offset_w + col * char_w * 3.0 + group_gap;
                 let y = rect.top() + (cur_row - first) as f32 * row_h;
+                let caret_w = char_w * self.params.radix.text_width() as f32;
                 painter.rect_filled(
-                    egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(char_w * 2.0, row_h)),
+                    egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(caret_w, row_h)),
                     2.0,
                     ui.visuals().selection.bg_fill,
                 );
+                let byte_fmt = RowFormat {
+                    bpr: 1,
+                    group: 0,
+                    radix: self.params.radix,
+                };
+                let (byte_text, _) = format_row(&[self.byte_at(self.cursor)], &byte_fmt);
                 painter.text(
                     egui::pos2(x, y),
                     egui::Align2::LEFT_TOP,
-                    format!("{:02X}", self.byte_at(self.cursor)),
+                    byte_text.trim_end(),
                     mono.clone(),
                     ui.visuals().strong_text_color(),
                 );
@@ -255,20 +284,16 @@ impl eframe::App for HexApp {
                 ui.id().with("scrollbar"),
                 egui::Sense::click_and_drag(),
             );
-            let frac = self.top_row as f32 / total_rows as f32;
-            let visible_frac = (visible_rows as f32 / total_rows as f32).min(1.0);
-            let thumb_h = (track.height() * visible_frac).max(MIN_THUMB_H);
-            let thumb_y = track.top() + (track.height() - thumb_h) * frac;
+            let (thumb_y, thumb_h) = self.scroll.thumb(track.height());
             let thumb = egui::Rect::from_min_size(
-                egui::pos2(track.left() + 2.0, thumb_y),
+                egui::pos2(track.left() + 2.0, track.top() + thumb_y),
                 egui::vec2(SCROLLBAR_W - 4.0, thumb_h),
             );
             painter.rect_filled(thumb, 3.0, ui.visuals().widgets.active.bg_fill);
             if resp.dragged() || resp.clicked() {
                 if let Some(p) = resp.interact_pointer_pos() {
                     let t = ((p.y - track.top()) / track.height()).clamp(0.0, 1.0);
-                    self.top_row = (t as f64 * total_rows as f64) as u64;
-                    self.top_row = self.top_row.min(total_rows.saturating_sub(1));
+                    self.scroll.set_fraction(f64::from(t));
                 }
             }
 
@@ -276,10 +301,13 @@ impl eframe::App for HexApp {
             if ui.input(|i| i.pointer.primary_clicked()) {
                 if let Some(p) = ui.input(|i| i.pointer.interact_pos()) {
                     if rect.contains(p) && p.x < ascii_x {
-                        let row = first + ((p.y - rect.top()) / row_h).floor().max(0.0) as u64;
+                        let row = first
+                            .saturating_add(((p.y - rect.top()) / row_h).floor().max(0.0) as u64);
                         let rel = (p.x - rect.left() - offset_w).max(0.0);
                         let col = (rel / (char_w * 3.0)).floor().max(0.0) as u64;
-                        let at = row * u64::from(bpr) + col.min(u64::from(bpr) - 1);
+                        let at = row
+                            .saturating_mul(u64::from(bpr))
+                            .saturating_add(col.min(u64::from(bpr) - 1));
                         self.cursor = at.min(self.buffer.len().saturating_sub(1));
                     }
                 }
@@ -313,28 +341,4 @@ pub fn run(path: &std::path::Path) -> Result<(), String> {
         Box::new(move |_cc| Ok(Box::new(HexApp::new(path)?))),
     )
     .map_err(|e| e.to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::format_row;
-
-    #[test]
-    fn row_hex_groups_and_ascii() {
-        let (hex, ascii) = format_row(&[0x41, 0x42, 0x00, 0x7f], 8, 2);
-        assert!(hex.starts_with("4142 007F"), "实际 {hex:?}");
-        assert_eq!(ascii, "AB..");
-        // 短行必须补齐到与满行一样宽：列宽不随最后一行变化
-        let (full, _) = format_row(&[0u8; 8], 8, 2);
-        assert_eq!(hex.chars().count(), full.chars().count());
-    }
-
-    #[test]
-    fn empty_row_is_all_padding() {
-        let (hex, ascii) = format_row(&[], 4, 1);
-        assert_eq!(ascii, "");
-        let (full, _) = format_row(&[0u8; 4], 4, 1);
-        assert_eq!(hex.chars().count(), full.chars().count());
-        assert!(hex.trim().is_empty());
-    }
 }

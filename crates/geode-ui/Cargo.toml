@@ -19,5 +19,9 @@ criterion = { workspace = true }
 name = "paint"
 harness = false
 
+[[bench]]
+name = "scroll"
+harness = false
+
 [lints]
 workspace = true
