@@ -6,7 +6,25 @@
 
 ImHex 证明了"hex 视图 + 结构描述语言"这条路能做成产品，但它把护城河建在了 Pattern Language 的解释器和模板生态上，而把 hex 视图本身做成了一个（相对）普通的功能。本项目的赌注是：**在数据规模上拉开一个数量级的差距（100GB 不是 4GB），并把"写模板"这件最贵的事交给 AI + 可验证的生成闭环**。
 
-本仓库当前**只有设计文档，没有代码**。27 份文档 + 一册 ADR 构成一套自洽的规范：`00` 是契约，`01`–`18` 是各子系统的完整设计，`19`–`25` 是守门层（安全、验证、工具链、格式规范、互操作、交互），`adr/` 记录所有"为什么不用 X"。
+本仓库现在是**设计 + 可运行代码**：28 份文档 + 20 篇 ADR 构成规范（`00` 是契约，`01`–`18` 是子系统设计，`19`–`27` 是守门层与字典），`adr/` 记录所有"为什么不用 X"；代码侧已完成 M0/M1 与 M2 第一波（窗口、选区、高亮、Inspector、四引擎搜索、分析工具箱）。
+
+## 快速开始
+
+```bash
+# 需要 Rust 1.85+（本机 cargo 在 ~/.cargo/bin，可能不在 PATH）
+cargo build --release
+cargo run --release -- <任意文件>          # 打开图形窗口
+cargo run --release -- --inspect <文件>     # 无窗口探测：大小 / caps / 头部 256B
+
+# 门禁（CI 跑同样的六条）
+cargo fmt --all --check
+cargo clippy --all-targets -- -D warnings
+cargo test --workspace
+cargo run -p xtask -- deps            # 分层与 GUI 污染（E0101~E0104）
+cargo run -p xtask -- schema-check    # 四份自有格式 schema
+cargo run -p xtask -- vectors-check   # 16 条测试向量
+cargo run -p xtask -- docs-errors     # 126 个错误码与文档一致
+```
 
 ---
 
@@ -129,12 +147,12 @@ ImHex 证明了"hex 视图 + 结构描述语言"这条路能做成产品，但�
 - [x] 跨文档一致性校对（错误码段统一登记、Layer 枚举、crate 分层、键位冲突、性能预算回填）
 - [x] 项目命名与全量改名（Geode，~520 处引用）
 - [x] 守门层文档：安全威胁模型（19）、测试语料与模糊（20）、性能基准（21）、BinSpec 工具链（22）、自有格式规范（23）、迁移与互操作（24）、交互与文案（25）
-- [x] 架构决策记录（`docs/adr/`，18 篇）
+- [x] 架构决策记录（`docs/adr/`，20 篇）
 - [x] 二次一致性校对（错误码 EB/EC 段、`geode-migrate` 分层、搜索空间默认 Source、Layer 10 变体、阈值统一 5%、隐私默认 strict）
 - [x] **M0 骨架（部分）**：workspace + `xtask deps` 四条门禁 + 三平台 CI + `geode-core` + `geode-provider`（`pread`）+ `geode-buffer` 只读 + `app` CLI —— 2052 行 Rust、31 测试、4 GiB 稀疏文件打开 **0.013 ms**（`ad5e8f6` → `8a9ad4b`）
 - [x] 页面设计稿与可点原型（`docs/img/pages/`、`docs/img/mockup.html`，8 屏 × 3 主题）
 - [x] **M1 编辑与持久化（代码完成）**：piece table + 计数树、覆盖编辑与撤销、patch 桥、原子保存、journal 四道关卡 —— `ca66b45` / `ed75b14`；194 测试
-- [x] **M2 第一波（视图与分析）**：窗口骨架（eframe + 自绘比例尺滚动条）、选区模型、高亮合成、Inspector（20 类型）、四引擎搜索、分析工具箱 —— 331 测试、11 crate
+- [x] **M2 第一波（视图与分析）**：窗口骨架（eframe + 自绘比例尺滚动条）、选区模型、高亮合成、Inspector（20 类型）、四引擎搜索、分析工具箱 —— 331 测试、9 个 crate
 - [ ] **M0 收尾**：M0② 的滚动 p99 还没测（窗口已能开，但验收要 30 s 采样与真实显示器）
 - [ ] **M2 收尾**：radix 切换、Sarasa 字体嵌入、像素快照基线、`scroll_p99` 基准接入 CI
 - [ ] 待拍板 8 条（见上表，**Q8 许可证**最急；代码侧已按 `MIT OR Apache-2.0` 落地，改只需动 4 份文档措辞 + 2 个 LICENSE 文件）
@@ -145,10 +163,11 @@ ImHex 证明了"hex 视图 + 结构描述语言"这条路能做成产品，但�
 
 | 指标 | 值 |
 |---|---|
-| 提交 | 39 |
-| Rust | ~20,000 行 / 11 crate |
-| 测试 | 331（fmt / clippy -D warnings / deps / schema / vectors / docs-errors 全绿） |
+| 提交 | **37**（`main == origin/main`） |
+| Rust | **23,424 行** / 9 crate |
+| 测试 | **331**（fmt / clippy -D warnings / deps / schema / vectors / docs-errors 全绿） |
 | 文档 | 28 份 + 20 篇 ADR ≈ 1.3 万行 |
+| 硬数字 | 4 GiB 打开 0.013 ms · 10 万 piece 定位 0.48 µs · 15,360 图元 0.83 ms |
 
 **下一步**：M2 剩余项（radix / Sarasa 图集 / 像素基线）→ M2 验收 → M3 BinSpec 编译器。
 
