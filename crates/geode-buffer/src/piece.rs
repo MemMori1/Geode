@@ -52,7 +52,7 @@ impl Piece {
 /// Piece table。
 #[derive(Debug, Default)]
 pub struct PieceTable {
-    pieces: Vec<Piece>,
+    pub(crate) pieces: Vec<Piece>,
     len: u64,
     source_len: u64,
 }
@@ -205,7 +205,7 @@ impl PieceTable {
     }
 
     /// 在 `at` 处切一次，保证 `at` 是 piece 边界。
-    fn split_at(&mut self, at: u64) -> Result<(), EditError> {
+    pub(crate) fn split_at(&mut self, at: u64) -> Result<(), EditError> {
         if at == 0 || at == self.len {
             return Ok(());
         }
@@ -287,7 +287,7 @@ impl PieceTable {
     }
 
     /// 合并相邻连续 Source、相邻 Literal（04 §3.2 规则 2）。
-    fn coalesce(&mut self) {
+    pub(crate) fn coalesce(&mut self) {
         let mut out: Vec<Piece> = Vec::with_capacity(self.pieces.len());
         for p in self.pieces.drain(..) {
             if p.is_empty() {
@@ -451,3 +451,13 @@ impl<'a> PieceCursor<'a> {
         Some(out)
     }
 }
+
+impl std::fmt::Display for EditError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::OutOfRange { at, len } => write!(f, "偏移 {at} 超出长度 {len}"),
+        }
+    }
+}
+
+impl std::error::Error for EditError {}
