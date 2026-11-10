@@ -149,3 +149,23 @@ fn out_of_range_does_not_panic() {
     assert!(ed.remove(1, 99).is_err());
     assert_eq!(ed.materialize(), b"AB");
 }
+
+#[test]
+fn undo_budget_drops_oldest_steps() {
+    let mut ed = editor(&[0u8; 4096]);
+    ed.set_undo_limit(64);
+    for i in 0..20u8 {
+        ed.overwrite(u64::from(i) * 8, &[i; 8]).unwrap();
+    }
+    assert!(ed.dropped_steps() > 0, "超出预算必须丢最早的步");
+    assert!(ed.undo_bytes() <= ed.undo_limit());
+    assert!(ed.undo_depth() >= 1, "至少保留最近一步，否则撤销键变摆设");
+}
+
+#[test]
+fn default_undo_limit_matches_spec() {
+    use geode_buffer::edit::default_undo_limit;
+    assert_eq!(default_undo_limit(0), 64 << 20);
+    assert_eq!(default_undo_limit(100 << 20), 64 << 20);
+    assert_eq!(default_undo_limit(30 << 30), 512 << 20);
+}

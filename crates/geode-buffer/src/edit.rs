@@ -11,10 +11,27 @@
 use crate::piece::{EditError, Piece, PieceTable, Span};
 use geode_core::{ByteRange, Offset};
 use geode_provider::Provider;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 /// nibble 编辑的分组窗口：同一字节内的两次半字节输入若间隔 ≤400 ms，合并为一次编辑。
 pub const NIBBLE_GROUP_MS: u128 = 400;
+
+/// 撤销内存预算：`min(512 MiB, max(64 MiB, 2% × 文件长度))`（04 §4.6）。
+#[must_use]
+pub fn default_undo_limit(len: u64) -> u64 {
+    const MIN: u64 = 64 << 20;
+    const MAX: u64 = 512 << 20;
+    (len / 50).clamp(MIN, MAX)
+}
+
+fn undo_size(op: &Undo) -> u64 {
+    match op {
+        Undo::Replaced { old, .. } => old.len() as u64 + 24,
+        Undo::Inserted { .. } => 24,
+        Undo::Removed { bytes, .. } => bytes.len() as u64 + 24,
+    }
+}
 
 /// patch 归并的最大间隙（04 §4.5：16 = 一行内的典型编辑跨度）。
 pub const PATCH_MERGE_GAP: u64 = 16;
@@ -66,7 +83,10 @@ enum Undo {
 pub struct Editor {
     table: PieceTable,
     src: Arc<dyn Provider>,
-    undo: Vec<Undo>,
+    undo: VecDeque<Undo>,
+    undo_bytes: u64,
+    undo_limit: u64,
+    dropped_steps: u64,
     patches: Vec<Patch>,
     /// 最近一次 nibble 编辑：(字节偏移, 已写入的高半字节, 发生时刻)。
     nibble: Option<(u64, u8, std::time::Instant)>,
@@ -87,10 +107,14 @@ impl Editor {
     /// 用一张表和一个数据源建会话。
     #[must_use]
     pub fn new(table: PieceTable, src: Arc<dyn Provider>) -> Self {
+        let undo_limit = default_undo_limit(table.len());
         Self {
             table,
             src,
-            undo: Vec::new(),
+            undo: VecDeque::new(),
+            undo_bytes: 0,
+            undo_limit,
+            dropped_steps: 0,
             patches: Vec::new(),
             nibble: None,
             clock: Box::new(std::time::Instant::now),
@@ -139,7 +163,7 @@ impl Editor {
         let available = self.table.len().saturating_sub(at).min(data.len() as u64);
         let added = data.len() as u64 - available;
         self.table.overwrite(at, data)?;
-        self.undo.push(Undo::Replaced {
+        self.push_undo(Undo::Replaced {
             at,
             old: old.clone(),
             added,
@@ -152,7 +176,7 @@ impl Editor {
     /// 在 `at` 插入。
     pub fn insert(&mut self, at: u64, data: &[u8]) -> Result<(), EditError> {
         self.table.insert(at, data)?;
-        self.undo.push(Undo::Inserted {
+        self.push_undo(Undo::Inserted {
             at,
             len: data.len() as u64,
         });
@@ -165,7 +189,7 @@ impl Editor {
     pub fn remove(&mut self, at: u64, len: u64) -> Result<(), EditError> {
         let bytes = self.read_span(at, len);
         self.table.remove(at, len)?;
-        self.undo.push(Undo::Removed {
+        self.push_undo(Undo::Removed {
             at,
             bytes: bytes.clone(),
         });
@@ -201,14 +225,14 @@ impl Editor {
             // 复用上一步撤销记录与 patch，不再新增。
             self.table.overwrite(at, &[new])?;
             debug_assert!(
-                matches!(self.undo.last(), Some(Undo::Replaced { at: u, .. }) if *u == at)
+                matches!(self.undo.back(), Some(Undo::Replaced { at: u, .. }) if *u == at)
             );
             if let Some(p) = self.patches.last_mut() {
                 p.new = vec![new];
             }
         } else {
             self.table.overwrite(at, &[new])?;
-            self.undo.push(Undo::Replaced {
+            self.push_undo(Undo::Replaced {
                 at,
                 old: cur,
                 added: 0,
@@ -219,9 +243,43 @@ impl Editor {
         Ok(())
     }
 
+    fn push_undo(&mut self, op: Undo) {
+        self.undo_bytes += undo_size(&op);
+        self.undo.push_back(op);
+        while self.undo_bytes > self.undo_limit && self.undo.len() > 1 {
+            if let Some(old) = self.undo.pop_front() {
+                self.undo_bytes = self.undo_bytes.saturating_sub(undo_size(&old));
+                self.dropped_steps += 1;
+            }
+        }
+    }
+
+    /// 当前撤销记录占用的估算字节数。
+    #[must_use]
+    pub fn undo_bytes(&self) -> u64 {
+        self.undo_bytes
+    }
+
+    /// 撤销预算（字节）。
+    #[must_use]
+    pub fn undo_limit(&self) -> u64 {
+        self.undo_limit
+    }
+
+    /// 因超出预算被丢弃的最早撤销步数。
+    #[must_use]
+    pub fn dropped_steps(&self) -> u64 {
+        self.dropped_steps
+    }
+
+    /// 覆盖撤销预算（测试与"大文件省内存"模式用）。
+    pub fn set_undo_limit(&mut self, limit: u64) {
+        self.undo_limit = limit.max(1);
+    }
+
     /// 撤销一步。
     pub fn undo(&mut self) -> bool {
-        let Some(op) = self.undo.pop() else {
+        let Some(op) = self.undo.pop_back() else {
             return false;
         };
         let ok = match op {
