@@ -49,12 +49,12 @@ pub const M1_BENCHES: &[Bench] = &[
     },
     Bench {
         name: "edit_random",
-        budget_row: "00 §7：单步编辑 p99 <1 ms",
-        status: Status::Blocked("T1.4 覆盖编辑"),
+        budget_row: "00 §7：1e5 次随机编辑单步 p99 <1 ms（21 B3）",
+        status: Status::Ready,
     },
     Bench {
         name: "undo_all",
-        budget_row: "00 §7：1e5 次编辑后全部撤销",
-        status: Status::Blocked("T1.5 撤销"),
+        budget_row: "M1 验收②：1 万次随机编辑后撤销全部，字节与原文逐字节相等",
+        status: Status::Ready,
     },
 ];
