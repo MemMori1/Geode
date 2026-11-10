@@ -359,6 +359,7 @@ version = "0.0.0"
 dependencies = [
  "criterion",
  "geode-core",
+ "geode-format",
  "geode-provider",
  "proptest",
 ]

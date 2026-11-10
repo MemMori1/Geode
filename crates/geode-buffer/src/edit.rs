@@ -5,8 +5,9 @@
 //! 2. `insert`/`remove` 必须显式调用——绝不会因为"多打一个字节"悄悄改变文件长度。
 //! 3. 覆盖模式下按 Delete **只移动游标**，要清零必须调 `fill`（显式意图）。
 //!
-//! 撤销记录的是**逆操作**（原字节），不是"把文件回滚到某个版本"——后者在 100 GB
-//! 文件上等于每次编辑复制一份。
+//! 撤销小步记录**逆操作**（原字节），大步记录编辑前的整表快照（COW，见
+//! [`SNAPSHOT_MIN_BYTES`]）——前者在小编辑上省内存，后者避免 1 MiB 以上的操作
+//! 产生同样大的逆操作副本。
 
 use crate::piece::{EditError, Piece, PieceTable, Span};
 use geode_core::{ByteRange, Offset};
@@ -17,6 +18,10 @@ use std::sync::Arc;
 /// nibble 编辑的分组窗口：同一字节内的两次半字节输入若间隔 ≤400 ms，合并为一次编辑。
 pub const NIBBLE_GROUP_MS: u128 = 400;
 
+/// 大操作撤销快照的阈值：一次操作影响的字节数达到 1 MiB 时，撤销栈改存
+/// 编辑前的 [`PieceTable`] 快照（`Undo::Snapshot`），不再逐字节记逆操作。
+pub const SNAPSHOT_MIN_BYTES: u64 = 1 << 20;
+
 /// 撤销内存预算：`min(512 MiB, max(64 MiB, 2% × 文件长度))`（04 §4.6）。
 #[must_use]
 pub fn default_undo_limit(len: u64) -> u64 {
@@ -25,11 +30,240 @@ pub fn default_undo_limit(len: u64) -> u64 {
     (len / 50).clamp(MIN, MAX)
 }
 
+/// 一次可序列化的编辑操作，也是 journal（`.geojournal`）的载荷单元。
+///
+/// 编码为定长大端：`tag u8 │ at u64 │ len u32 │ data[len]`。`tag` 的取值与
+/// `docs/23 §3.8` 的 `kind` 对齐：`0x01 Overwrite`、`0x02 Insert`、`0x03 Remove`。
+/// `Fill` 是覆盖的语义特化（同一字节重复），journal 目前没有独立 kind，这里使用
+/// 扩展值 `0x07`，落盘前可由 T1.8 规范化为 `Overwrite`。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EditOp {
+    /// 等长替换：从 `at` 起写入 `data`；越过 EOF 时追加。
+    Overwrite {
+        /// 起始偏移。
+        at: u64,
+        /// 新字节。
+        data: Vec<u8>,
+    },
+    /// 插入：在 `at` 前插入 `data`（长度增加）。
+    Insert {
+        /// 插入点。
+        at: u64,
+        /// 新字节。
+        data: Vec<u8>,
+    },
+    /// 删除 `[at, at+len)`（长度减少）。
+    Remove {
+        /// 起始偏移。
+        at: u64,
+        /// 删除长度。
+        len: u64,
+    },
+    /// 显式填充：从 `at` 起把 `data.len()` 个字节写成 `data[0]`。
+    Fill {
+        /// 起始偏移。
+        at: u64,
+        /// 填充字节（所有元素必须相同；回放只取首字节）。
+        data: Vec<u8>,
+    },
+}
+
+impl EditOp {
+    /// journal 记录帧里的 `kind` 字节（`docs/23 §3.8`）。
+    #[must_use]
+    pub fn tag(&self) -> u8 {
+        match self {
+            Self::Overwrite { .. } => 0x01,
+            Self::Insert { .. } => 0x02,
+            Self::Remove { .. } => 0x03,
+            Self::Fill { .. } => 0x07,
+        }
+    }
+
+    /// 编码为 journal 载荷（不含记录帧的 `seq`/`len`/CRC）。
+    ///
+    /// `at` 是 u64，原样编码；单条操作的数据长度超过 `u32::MAX` 时 panic——
+    /// 合法编辑不可能达到 4 GiB，需要可恢复的失败用 [`Self::try_to_bytes`]。
+    ///
+    /// # Panics
+    ///
+    /// 当 `data.len()` 或删除长度超过 `u32::MAX` 时 panic。
+    #[must_use]
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.try_to_bytes()
+            .expect("单条编辑操作不可能超过 u32::MAX 字节")
+    }
+
+    /// [`Self::to_bytes`] 的可失败版本：长度超出 u32 编码宽度时返回 `Err`。
+    pub fn try_to_bytes(&self) -> Result<Vec<u8>, EditOpError> {
+        let (tag, at, len, data): (u8, u64, u64, &[u8]) = match self {
+            Self::Overwrite { at, data } | Self::Fill { at, data } => {
+                (self.tag(), *at, data.len() as u64, data)
+            }
+            Self::Insert { at, data } => (self.tag(), *at, data.len() as u64, data),
+            Self::Remove { at, len } => (self.tag(), *at, *len, &[]),
+        };
+        if len > u64::from(u32::MAX) {
+            return Err(EditOpError::TooLarge {
+                what: "len",
+                value: len,
+            });
+        }
+        let mut out = Vec::with_capacity(13 + data.len());
+        out.push(tag);
+        out.extend_from_slice(&at.to_be_bytes());
+        out.extend_from_slice(&(len as u32).to_be_bytes());
+        out.extend_from_slice(data);
+        Ok(out)
+    }
+
+    /// 从 journal 载荷解码。
+    ///
+    /// 任何截断、未知 tag、声明长度与实际不符、尾随字节都返回 `Err`，**绝不 panic**。
+    pub fn from_bytes(bytes: &[u8]) -> Result<Self, EditOpError> {
+        const HEADER: usize = 13;
+        if bytes.len() < HEADER {
+            return Err(EditOpError::Truncated {
+                need: HEADER,
+                got: bytes.len(),
+            });
+        }
+        let tag = bytes[0];
+        let at = u64::from_be_bytes([
+            bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7], bytes[8],
+        ]);
+        let len = u32::from_be_bytes([bytes[9], bytes[10], bytes[11], bytes[12]]);
+        match tag {
+            0x01 | 0x02 | 0x07 => {
+                let data_len = usize::try_from(len).map_err(|_| EditOpError::TooLarge {
+                    what: "len",
+                    value: u64::from(len),
+                })?;
+                let need = HEADER.checked_add(data_len).ok_or(EditOpError::TooLarge {
+                    what: "len",
+                    value: u64::from(len),
+                })?;
+                if bytes.len() < need {
+                    return Err(EditOpError::Truncated {
+                        need,
+                        got: bytes.len(),
+                    });
+                }
+                if bytes.len() > need {
+                    return Err(EditOpError::TrailingBytes {
+                        extra: bytes.len() - need,
+                    });
+                }
+                let data = bytes[HEADER..].to_vec();
+                Ok(match tag {
+                    0x01 => Self::Overwrite { at, data },
+                    0x02 => Self::Insert { at, data },
+                    _ => Self::Fill { at, data },
+                })
+            }
+            0x03 => {
+                if bytes.len() > HEADER {
+                    return Err(EditOpError::TrailingBytes {
+                        extra: bytes.len() - HEADER,
+                    });
+                }
+                Ok(Self::Remove {
+                    at,
+                    len: u64::from(len),
+                })
+            }
+            other => Err(EditOpError::UnknownTag(other)),
+        }
+    }
+}
+
+/// [`EditOp`] 解码/编码失败。
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum EditOpError {
+    /// 输入短于声明的长度。
+    Truncated {
+        /// 需要的最少字节数。
+        need: usize,
+        /// 实际字节数。
+        got: usize,
+    },
+    /// 头部 `len` 之外还有多余字节。
+    TrailingBytes {
+        /// 多余字节数。
+        extra: usize,
+    },
+    /// 未知的 `tag`。
+    UnknownTag(u8),
+    /// 字段超出编码宽度（`len` 为 u32）。
+    TooLarge {
+        /// 字段名。
+        what: &'static str,
+        /// 实际值。
+        value: u64,
+    },
+}
+
+impl std::fmt::Display for EditOpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Truncated { need, got } => write!(f, "载荷截断：需要 {need} 字节，只有 {got}"),
+            Self::TrailingBytes { extra } => write!(f, "载荷尾部多出 {extra} 字节"),
+            Self::UnknownTag(tag) => write!(f, "未知 EditOp tag 0x{tag:02X}"),
+            Self::TooLarge { what, value } => {
+                write!(f, "字段 {what} 的值 {value} 超出 u32 编码范围")
+            }
+        }
+    }
+}
+
+impl std::error::Error for EditOpError {}
+
+/// 快照的内存估算：literal 字节（快照与活动表共享 `Arc`，这里保守按全量计）
+/// + piece 描述子 + `Arc` 头开销。
+fn table_mem(table: &PieceTable) -> u64 {
+    let literal: u64 = table
+        .pieces
+        .iter()
+        .map(|p| match p {
+            Piece::Literal(b) => b.len() as u64,
+            Piece::Source { .. } => 0,
+        })
+        .sum();
+    literal
+        + (table.pieces.len() as u64) * (std::mem::size_of::<Piece>() as u64 + 8)
+        + std::mem::size_of::<PieceTable>() as u64
+}
+
+/// 克隆一张 piece 表，**不读源数据**：`pieces` 整体克隆，`Piece::Literal` 的
+/// `Arc<[u8]>` 只增加引用计数（真正的 COW）。
+///
+/// `PieceTable` 的 `len`/`source_len` 是私有字段，无法在 `edit` 模块里直接构造；
+/// 这里先用公开原语建出一张长度/源长度都正确的空壳，再把 `pieces`（`pub(crate)`）
+/// 换成克隆出的描述子。`S < L`（纯内存表或大段插入）时先补一段零字节把长度撑到
+/// `L`，随后整段丢弃——峰值只多 `L - S` 字节，不复制既有 literal。
+fn clone_table(table: &PieceTable) -> PieceTable {
+    let mut out = PieceTable::from_source(table.source_len());
+    if table.len() < table.source_len() {
+        out.remove(table.len(), table.source_len() - table.len())
+            .expect("快照克隆：截断到文档长度必然合法");
+    } else if table.len() > table.source_len() {
+        let pad = usize::try_from(table.len() - table.source_len())
+            .expect("快照克隆：文档长度在 64 位平台必然可表示");
+        out.insert(table.source_len(), &vec![0u8; pad])
+            .expect("快照克隆：在源长度处追加必然合法");
+    }
+    out.pieces = table.pieces.clone();
+    debug_assert_eq!(out.len(), table.len());
+    debug_assert_eq!(out.source_len(), table.source_len());
+    out
+}
+
 fn undo_size(op: &Undo) -> u64 {
     match op {
         Undo::Replaced { old, .. } => old.len() as u64 + 24,
         Undo::Inserted { .. } => 24,
         Undo::Removed { bytes, .. } => bytes.len() as u64 + 24,
+        Undo::Snapshot(table) => table_mem(table),
     }
 }
 
@@ -77,6 +311,8 @@ enum Undo {
     Inserted { at: u64, len: u64 },
     /// 删除：把 `bytes` 插回 `at`。
     Removed { at: u64, bytes: Vec<u8> },
+    /// 大操作：编辑前的整表快照（结构共享的 COW 副本），撤销即回到该表。
+    Snapshot(Arc<PieceTable>),
 }
 
 /// 编辑会话。
@@ -90,7 +326,7 @@ pub struct Editor {
     patches: Vec<Patch>,
     /// 最近一次 nibble 编辑：(字节偏移, 已写入的高半字节, 发生时刻)。
     nibble: Option<(u64, u8, std::time::Instant)>,
-    clock: Box<dyn Fn() -> std::time::Instant + Send>,
+    clock: Box<dyn Fn() -> std::time::Instant + Send + Sync>,
 }
 
 impl std::fmt::Debug for Editor {
@@ -151,6 +387,34 @@ impl Editor {
         self.undo.len()
     }
 
+    /// 撤销栈里当前有多少步是整表快照（大操作 COW）。
+    #[must_use]
+    pub fn undo_snapshot_count(&self) -> usize {
+        self.undo
+            .iter()
+            .filter(|op| matches!(op, Undo::Snapshot(_)))
+            .count()
+    }
+
+    /// 依次回放一组编辑操作，等价于按顺序调用 [`Self::overwrite`]/[`Self::insert`]/
+    /// [`Self::remove`]/[`Self::fill`]。任何一步失败即返回 `Err`，此前成功的步骤
+    /// 保留（与 journal 的"已写入即生效"语义一致）。
+    pub fn replay(&mut self, ops: &[EditOp]) -> Result<(), EditError> {
+        for op in ops {
+            match op {
+                EditOp::Overwrite { at, data } => self.overwrite(*at, data)?,
+                EditOp::Insert { at, data } => self.insert(*at, data)?,
+                EditOp::Remove { at, len } => self.remove(*at, *len)?,
+                EditOp::Fill { at, data } => {
+                    if let Some(&byte) = data.first() {
+                        self.fill(*at, data.len() as u64, byte)?;
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// 覆盖 `at` 起的字节；越过 EOF 时追加。
     pub fn overwrite(&mut self, at: u64, data: &[u8]) -> Result<(), EditError> {
         if at > self.table.len() {
@@ -159,15 +423,20 @@ impl Editor {
                 len: self.table.len(),
             });
         }
+        let snapshot =
+            (data.len() as u64 >= SNAPSHOT_MIN_BYTES).then(|| Arc::new(clone_table(&self.table)));
         let old = self.read_span(at, data.len() as u64);
         let available = self.table.len().saturating_sub(at).min(data.len() as u64);
         let added = data.len() as u64 - available;
         self.table.overwrite(at, data)?;
-        self.push_undo(Undo::Replaced {
-            at,
-            old: old.clone(),
-            added,
-        });
+        match snapshot {
+            Some(table) => self.push_undo(Undo::Snapshot(table)),
+            None => self.push_undo(Undo::Replaced {
+                at,
+                old: old.clone(),
+                added,
+            }),
+        }
         self.push_patch(at, old, data.to_vec(), EditKind::Overwrite);
         self.nibble = None;
         Ok(())
@@ -175,11 +444,22 @@ impl Editor {
 
     /// 在 `at` 插入。
     pub fn insert(&mut self, at: u64, data: &[u8]) -> Result<(), EditError> {
+        if at > self.table.len() {
+            return Err(EditError::OutOfRange {
+                at,
+                len: self.table.len(),
+            });
+        }
+        let snapshot =
+            (data.len() as u64 >= SNAPSHOT_MIN_BYTES).then(|| Arc::new(clone_table(&self.table)));
         self.table.insert(at, data)?;
-        self.push_undo(Undo::Inserted {
-            at,
-            len: data.len() as u64,
-        });
+        match snapshot {
+            Some(table) => self.push_undo(Undo::Snapshot(table)),
+            None => self.push_undo(Undo::Inserted {
+                at,
+                len: data.len() as u64,
+            }),
+        }
         self.push_patch(at, Vec::new(), data.to_vec(), EditKind::Insert);
         self.nibble = None;
         Ok(())
@@ -187,12 +467,16 @@ impl Editor {
 
     /// 删除 `[at, at+len)`。
     pub fn remove(&mut self, at: u64, len: u64) -> Result<(), EditError> {
+        let snapshot = (len >= SNAPSHOT_MIN_BYTES).then(|| Arc::new(clone_table(&self.table)));
         let bytes = self.read_span(at, len);
         self.table.remove(at, len)?;
-        self.push_undo(Undo::Removed {
-            at,
-            bytes: bytes.clone(),
-        });
+        match snapshot {
+            Some(table) => self.push_undo(Undo::Snapshot(table)),
+            None => self.push_undo(Undo::Removed {
+                at,
+                bytes: bytes.clone(),
+            }),
+        }
         self.push_patch(at, bytes, Vec::new(), EditKind::Remove);
         self.nibble = None;
         Ok(())
@@ -282,6 +566,7 @@ impl Editor {
         let Some(op) = self.undo.pop_back() else {
             return false;
         };
+        let size = undo_size(&op);
         let ok = match op {
             Undo::Replaced { at, old, added } => {
                 let wrote = self.table.overwrite(at, &old).is_ok();
@@ -294,7 +579,17 @@ impl Editor {
             }
             Undo::Inserted { at, len } => self.table.remove(at, len).is_ok(),
             Undo::Removed { at, bytes } => self.table.insert(at, &bytes).is_ok(),
+            Undo::Snapshot(table) => {
+                // 栈上的快照通常独占；若仍被别处引用（例如调用方拿着旧表）就再
+                // 克隆一份描述子，绝不复制 literal 字节。
+                self.table = match Arc::try_unwrap(table) {
+                    Ok(table) => table,
+                    Err(shared) => clone_table(&shared),
+                };
+                true
+            }
         };
+        self.undo_bytes = self.undo_bytes.saturating_sub(size);
         self.nibble = None;
         ok
     }
@@ -375,7 +670,7 @@ impl Editor {
     }
 
     /// 供测试注入时钟（nibble 分组用）。
-    pub fn set_clock(&mut self, f: impl Fn() -> std::time::Instant + Send + 'static) {
+    pub fn set_clock(&mut self, f: impl Fn() -> std::time::Instant + Send + Sync + 'static) {
         self.clock = Box::new(f);
     }
 

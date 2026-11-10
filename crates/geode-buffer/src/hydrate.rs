@@ -3,7 +3,8 @@
 //! 为什么必须在这一层：降级要把源字节读进来，而 `PieceTable` 本身没有 Provider。
 //! 语义层硬填零 = 静默改坏数据，所以这件事只能由"能读"的层来做。
 
-use crate::piece::{EditError, Piece, PieceTable};
+use crate::piece::{EditError, Piece, PieceTable, Span};
+use crate::tree::PieceTree;
 use geode_core::Offset;
 use geode_provider::{Provider, ProviderError};
 
@@ -112,6 +113,93 @@ impl PieceTable {
         self.coalesce();
         Ok(())
     }
+}
+
+/// **按需填页**：只把 `[at, at+len)` 覆盖到的 placeholder 降级为 literal。
+///
+/// 与 [`PieceTable::demote_small_placeholders`] 的区别是**不做全量扫描**：
+/// 滚动时只填当前视口（通常 1~2 个 64 KiB 页），4 GiB 文档的其余部分保持
+/// `Piece::Source`，内存占用与打开耗时都不随文件大小增长（04 §4.1.1）。
+///
+/// 区间按文档长度裁剪；已越界的部分静默忽略（与读取路径的"永不 panic"一致）。
+/// 返回本次降级的 placeholder 片数。短读仍然报 [`HydrateError::ShortRead`]，
+/// **不填零**。
+pub trait EnsureFilled {
+    /// 见 trait 文档。
+    fn ensure_filled(
+        &mut self,
+        at: u64,
+        len: u64,
+        src: &dyn Provider,
+    ) -> Result<usize, HydrateError>;
+}
+
+impl EnsureFilled for PieceTable {
+    fn ensure_filled(
+        &mut self,
+        at: u64,
+        len: u64,
+        src: &dyn Provider,
+    ) -> Result<usize, HydrateError> {
+        let end = at.saturating_add(len).min(self.len());
+        if at >= end {
+            return Ok(0);
+        }
+        let segments = collect_source_segments(self.spans(at, end - at));
+        apply_segments(segments, src, |doc_at, bytes| self.overwrite(doc_at, bytes))
+    }
+}
+
+impl EnsureFilled for PieceTree {
+    fn ensure_filled(
+        &mut self,
+        at: u64,
+        len: u64,
+        src: &dyn Provider,
+    ) -> Result<usize, HydrateError> {
+        let end = at.saturating_add(len).min(self.len());
+        if at >= end {
+            return Ok(0);
+        }
+        let segments = collect_source_segments(self.spans(at, end - at));
+        // 树没有暴露可变 piece 遍历；等价长度的 `overwrite` 是公开 API，
+        // 且只作用于请求区间内的 Source 段，字节不变、区间外不动。
+        apply_segments(segments, src, |doc_at, bytes| self.overwrite(doc_at, bytes))
+    }
+}
+
+/// 便捷函数形式：`hydrate::ensure_filled(&mut tree, at, len, &provider)`。
+pub fn ensure_filled<B: EnsureFilled + ?Sized>(
+    buffer: &mut B,
+    at: u64,
+    len: u64,
+    src: &dyn Provider,
+) -> Result<usize, HydrateError> {
+    buffer.ensure_filled(at, len, src)
+}
+
+fn collect_source_segments(spans: Vec<Span<'_>>) -> Vec<(u64, u64, u64)> {
+    spans
+        .into_iter()
+        .filter_map(|span| match span {
+            Span::Source { start, len, at } => Some((at, start, len)),
+            Span::Literal { .. } => None,
+        })
+        .collect()
+}
+
+fn apply_segments(
+    segments: Vec<(u64, u64, u64)>,
+    src: &dyn Provider,
+    mut overwrite: impl FnMut(u64, &[u8]) -> Result<(), EditError>,
+) -> Result<usize, HydrateError> {
+    let mut demoted = 0usize;
+    for (doc_at, source_start, len) in segments {
+        let bytes = read_exact(src, source_start, len)?;
+        overwrite(doc_at, &bytes).map_err(HydrateError::Edit)?;
+        demoted += 1;
+    }
+    Ok(demoted)
 }
 
 pub(crate) fn read_exact(src: &dyn Provider, at: u64, len: u64) -> Result<Vec<u8>, HydrateError> {

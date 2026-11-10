@@ -14,12 +14,17 @@
 
 pub mod file;
 pub mod memory;
+pub mod page_cache;
 
 use core::fmt::{self, Debug};
 use geode_core::{ByteRange, Diag, Offset, ProviderId};
 
 pub use file::FileProvider;
 pub use memory::MemoryProvider;
+pub use page_cache::{
+    CacheStats, CachedProvider, DEFAULT_CACHE_BYTES, DEFAULT_HOLE_TTL, PAGE_SIZE, PAGE_SIZE_U64,
+    PageCache, PageCacheConfig, PageFill,
+};
 
 /// 数据源能力标志。上层**只看能力、不看具体类型**（06 §3.1）。
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

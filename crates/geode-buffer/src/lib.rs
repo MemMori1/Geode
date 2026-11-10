@@ -17,7 +17,9 @@ use geode_provider::{Caps, Provider, ProviderError, SizeInfo};
 use std::fmt;
 
 pub mod edit;
+pub mod editor_source;
 pub mod hydrate;
+pub mod journal;
 pub mod piece;
 pub mod save;
 pub mod tree;

@@ -7,6 +7,7 @@
 #![deny(missing_docs)]
 
 use geode_core::Offset;
+use geode_provider::page_cache::CachedProvider;
 use geode_provider::{FileProvider, Provider};
 use std::process::ExitCode;
 
@@ -51,7 +52,7 @@ fn print_help() {
 /// 打开一个数据源并打印基本信息 + 头部十六进制转储。
 fn inspect(path: &str) -> Result<(), String> {
     let start = std::time::Instant::now();
-    let provider = FileProvider::open(path).map_err(|e| e.to_string())?;
+    let provider = CachedProvider::new(FileProvider::open(path).map_err(|e| e.to_string())?);
     let open_ms = start.elapsed().as_secs_f64() * 1000.0;
 
     let size = provider.size().lower_bound();

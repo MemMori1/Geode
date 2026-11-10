@@ -101,7 +101,7 @@ geode/
 | crate | 层 | 允许的内部依赖 |
 |---|---|---|
 | geode-core | -1 | 无（叶子；只依赖 serde/thiserror） |
-| geode-buffer | 0 | core, provider（同层显式例外：buffer 的职责是"从 Provider 读并叠加编辑语义"，方向恒为 buffer → provider，反向禁止） |
+| geode-buffer | 0 | core, provider, format（两条同层显式例外：①buffer 的职责是"从 Provider 读并叠加编辑语义"，方向恒为 buffer → provider；②journal/patch 的**落盘编码**复用 `geode-format`，buffer 只写记录、不解析文件格式。两条反向依赖均禁止） |
 | geode-provider | 0 | core |
 | geode-annot | 0 | core |
 | geode-format | 0 | core（+ serde/toml/zip 只读；**禁止 provider/buffer**：只认字节与文本，不持有数据源） |
@@ -318,6 +318,8 @@ jobs:
 |---|---|---|---|---|
 | **M0** | **部分完成**（2026-11-09） | workspace 骨架（resolver 3 / edition 2024 / 统一 lints）、`xtask deps` 四条机器规则（E0101~E0104）、三平台 CI、`geode-core`（Offset/ByteRange/Diag/Value/Ids/Budget/Version）、`geode-provider`（file `pread` + memory，Caps/SizeInfo/ReadReport）、`geode-buffer` 只读骨架（`read`/`version`）、`app` CLI（`--version`/`--help` + hexdump） | `geode-annot` 区间索引、`geode-ui` Painter 自绘网格与比例尺滚动条、M0② 滚动 p99 验收 | 2052 行 Rust、31 测试全绿、`clippy -D warnings` 干净；4 GiB 稀疏文件打开 **0.013 ms**（验收①要求 <200ms）；release 二进制 461 KB；CI 一次 success。提交 `ad5e8f6` → `be7f327` → `09ff4ef` → `8a9ad4b` |
 
+| **M1** | **代码完成，待集成验收**（2026-11-10） | `geode-buffer`：piece table 语义层 + 计数树（`TreeCursor`/树内 R3/不变量）、R1 降级与局部 defrag、lazy 填页、覆盖编辑与 nibble 分组、撤销（逆操作 + ≥1 MiB COW 快照）、`EditOp` 编解码、原子保存（`.bak`/进度/取消）、journal 写入与四道关卡恢复；`geode-format`：patch/journal 编解码；`geode-project`：patch 桥；`geode-provider`：页缓存与 `CachedProvider` | T1.9 集成验收（`18 §10` M1 五条跑成 CI 用例）；`save_1gb` 吞吐在本机磁盘上 110.9 MiB/s（同卷 `dd` 116.7 MB/s，硬件限制）；4 GiB 整文件保存测试因磁盘不足 `#[ignore]` | 16,325 行 Rust、191 测试、`clippy -D warnings` 干净；4 GiB 偏移写 1 MiB 回读逐字节相等；10,000 次随机编辑 `undo_all` 逐字节相等；S2 100 次 kill -9 恢复 100/100、Partial 0、最多丢 62 帧 |
+
 **M0①（打开 4GB <200ms）已达成；M0②（滚动 p99 <25ms）未测**——它需要 `geode-ui` 的网格落地后接 21 §5.2 的 `scroll_p99`，不在读路径上。
 
 ### 10.2 M1 前置工件（≈1.4 人日，不占里程碑，但缺了 M1 无法验收）
@@ -342,6 +344,7 @@ jobs:
 |---|---|---|---|---|
 | S1 | placeholder 4 KiB 下限在真实文件上是否碎片化 | 04 §4.2 的核心假设（"1 字节 literal 与 placeholder 交替"的病态结构） | 1 万个随机编辑序列后统计 piece 数，须满足 `piece ≤ O(C + 改动字节 / 4KiB)` 且内存放大 <2× | 0.5 |
 | S2 | journal 不逐条 fsync 在 `kill -9` 下的实际丢失窗口 | M1③ 的"恢复 N 条修改"文案与 17 §9.3 的诚实度 | 1000 次随机时刻 kill：最大丢失 ≤1 秒编辑、恢复成功率 100%、`Partial` 率 <1% | 0.3 |
+| | **S2 状态：部分闭合（2026-11-10）** | 已跑 100 次（非 1000）：恢复 100/100、`Partial` 0/100、最多丢 62 帧 ≈124 ms；0/100 的 95% 上界约 3%，**不能证明 <1%**；`kill -9` 保留 page cache，测的是用户态缓冲窗口而非断电 fsync 窗口。详见 `docs/spikes/S2-journal-crash-window.md` | | |
 | S3 | 纯 `egui::Painter` 一帧 ~5000 quad 能否稳 60fps | 05 Q8；决定是否需要 wgpu 实例化 callback | 4 GB 文件滚动 30 s，p99 <25 ms，无掉帧 | 0.5 |
 
 **S3 状态：已闭合（2026-11-09）**。15,360 图元（64×120 格）整帧 0.83 ms，文本路径 1,088 格 0.114 ms；余量约 20×，不需改 05 §4.3 的方案。完整方法与"没证明什么"见 `docs/spikes/S3-painter-throughput.md`。**剩余风险**：不含 GPU 提交、不含命中测试、字体为 egui 默认而非 Sarasa Mono SC，见该文 §"没有证明什么"。

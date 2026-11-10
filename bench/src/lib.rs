@@ -45,7 +45,7 @@ pub const M1_BENCHES: &[Bench] = &[
     Bench {
         name: "save_1gb",
         budget_row: "00 §7：保存 1 GiB >500 MB/s",
-        status: Status::Blocked("T1.7 保存事务"),
+        status: Status::Ready,
     },
     Bench {
         name: "edit_random",

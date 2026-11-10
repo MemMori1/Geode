@@ -17,7 +17,11 @@ const MATRIX: &[(&str, i8, &[&str])] = &[
     // 与 docs/18-engineering-plan.md §3.2 的表逐行对应；改表必须同时改这里。
     ("geode-core", -1, &[]),
     // 同层显式例外：buffer 的职责就是"从 Provider 读 + 加编辑语义"，方向恒为 buffer → provider（反之禁止）。
-    ("geode-buffer", 0, &["geode-core", "geode-provider"]),
+    (
+        "geode-buffer",
+        0,
+        &["geode-core", "geode-provider", "geode-format"],
+    ),
     ("geode-provider", 0, &["geode-core"]),
     ("geode-annot", 0, &["geode-core"]),
     ("geode-format", 0, &["geode-core"]),

@@ -1,6 +1,6 @@
 //! 编辑会话测试（T1.4 验收）。DESIGN: 04 §4.2、§4.5
 
-use geode_buffer::edit::{EditKind, Editor, PATCH_MERGE_GAP};
+use geode_buffer::edit::{EditKind, EditOp, Editor, PATCH_MERGE_GAP, SNAPSHOT_MIN_BYTES};
 use geode_buffer::piece::PieceTable;
 use geode_provider::MemoryProvider;
 use std::sync::Arc;
@@ -104,7 +104,7 @@ fn random_edits_then_undo_all_restores_original() {
         seed ^= seed << 17;
         seed % m
     };
-    for _ in 0..2000 {
+    for _ in 0..10_000 {
         let len = ed.len();
         match next(3) {
             0 => {
@@ -126,9 +126,9 @@ fn random_edits_then_undo_all_restores_original() {
             }
         }
     }
-    assert_ne!(ed.materialize(), original, "2000 次编辑后不应恰好等于原文");
+    assert_ne!(ed.materialize(), original, "10000 次编辑后不应恰好等于原文");
     let undone = ed.undo_all();
-    assert_eq!(undone, 2000, "每一步都应可撤销");
+    assert_eq!(undone, 10_000, "每一步都应可撤销");
     assert_eq!(ed.materialize(), original, "全部撤销后必须逐字节相等");
 }
 
@@ -195,4 +195,214 @@ fn overlapping_overwrites_do_not_merge() {
     let patches = ed.patches();
     assert_eq!(patches.len(), 2);
     assert_eq!(ed.materialize(), b"0123CD6789".to_vec());
+}
+
+#[test]
+fn edit_op_bytes_roundtrip_all_variants() {
+    let ops = [
+        EditOp::Overwrite {
+            at: 0x0102_0304_0506_0708,
+            data: b"hello".to_vec(),
+        },
+        EditOp::Insert {
+            at: 42,
+            data: Vec::new(),
+        },
+        EditOp::Remove {
+            at: 7,
+            len: 0xFFFF_FFFF,
+        },
+        EditOp::Fill {
+            at: 3,
+            data: vec![0xAA; 9],
+        },
+    ];
+    for op in &ops {
+        let bytes = op.to_bytes();
+        let back = EditOp::from_bytes(&bytes).expect("自己编的字节必然可解码");
+        assert_eq!(&back, op, "from_bytes(to_bytes(x)) 必须等于 x");
+        assert_eq!(
+            op.try_to_bytes().expect("普通操作必然可编码"),
+            bytes,
+            "to_bytes 与 try_to_bytes 必须一致"
+        );
+    }
+}
+
+#[test]
+fn edit_op_layout_matches_journal_kinds() {
+    // docs/23 §3.8：kind u8 │ at u64 │ len u32 │ data[len]，全部大端。
+    let op = EditOp::Overwrite {
+        at: 0x0102_0304_0506_0708,
+        data: b"abc".to_vec(),
+    };
+    let bytes = op.to_bytes();
+    assert_eq!(
+        bytes,
+        vec![
+            0x01, // Overwrite
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, // at
+            0x00, 0x00, 0x00, 0x03, // len
+            b'a', b'b', b'c',
+        ]
+    );
+    assert_eq!(EditOp::Remove { at: 1, len: 2 }.to_bytes()[0], 0x03);
+    assert_eq!(
+        EditOp::Insert {
+            at: 0,
+            data: vec![1]
+        }
+        .to_bytes()[0],
+        0x02
+    );
+    assert_eq!(
+        EditOp::Fill {
+            at: 0,
+            data: vec![1]
+        }
+        .to_bytes()[0],
+        0x07,
+        "journal 无 Fill kind，使用向后兼容的扩展 tag"
+    );
+}
+
+#[test]
+fn edit_op_from_bytes_rejects_corruption_without_panic() {
+    use geode_buffer::edit::EditOpError;
+    use std::panic::catch_unwind;
+
+    let header = |tag: u8, at: u64, len: u32| {
+        let mut v = vec![tag];
+        v.extend_from_slice(&at.to_be_bytes());
+        v.extend_from_slice(&len.to_be_bytes());
+        v
+    };
+
+    // 空输入 / 头部截断。
+    assert!(matches!(
+        EditOp::from_bytes(&[]),
+        Err(EditOpError::Truncated { need: 13, got: 0 })
+    ));
+    assert!(matches!(
+        EditOp::from_bytes(&header(0x01, 0, 0)[..5]),
+        Err(EditOpError::Truncated { .. })
+    ));
+    // 声明了数据长度但数据不足。
+    assert!(matches!(
+        EditOp::from_bytes(&header(0x01, 0, 10)),
+        Err(EditOpError::Truncated { .. })
+    ));
+    // 未知 tag（0x04 在 journal 里是 Checkpoint，不是编辑操作）。
+    assert!(matches!(
+        EditOp::from_bytes(&header(0x04, 0, 0)),
+        Err(EditOpError::UnknownTag(0x04))
+    ));
+    // 尾随字节：Overwrite 与 Remove 都不接受。
+    let mut trailing = header(0x01, 0, 1);
+    trailing.extend_from_slice(b"xy");
+    assert!(matches!(
+        EditOp::from_bytes(&trailing),
+        Err(EditOpError::TrailingBytes { extra: 1 })
+    ));
+    let mut remove_trailing = header(0x03, 0, 0);
+    remove_trailing.push(0xFF);
+    assert!(matches!(
+        EditOp::from_bytes(&remove_trailing),
+        Err(EditOpError::TrailingBytes { extra: 1 })
+    ));
+    // 任何字节串都不许 panic。
+    for len in 0..40usize {
+        let fuzz: Vec<u8> = (0..len).map(|i| (i * 37 + 11) as u8).collect();
+        let r = catch_unwind(|| EditOp::from_bytes(&fuzz));
+        assert!(r.is_ok(), "from_bytes 在长度 {len} 的输入上 panic 了");
+    }
+}
+
+#[test]
+fn replay_applies_ops_in_order_and_is_undoable() {
+    let ops = vec![
+        EditOp::Overwrite {
+            at: 1,
+            data: b"XY".to_vec(),
+        },
+        EditOp::Insert {
+            at: 4,
+            data: b"!!".to_vec(),
+        },
+        EditOp::Remove { at: 0, len: 2 },
+        EditOp::Fill {
+            at: 1,
+            data: vec![b'z'; 3],
+        },
+    ];
+    let mut ed = editor(b"abcdef");
+    ed.replay(&ops).unwrap();
+    assert_eq!(ed.materialize(), b"Yzzzef".to_vec());
+    assert_eq!(ed.undo_all(), ops.len());
+    assert_eq!(ed.materialize(), b"abcdef".to_vec());
+
+    // 中途越界：前一步保留，后一步返回 Err，不 panic。
+    let mut ed = editor(b"AB");
+    let err = ed.replay(&[
+        EditOp::Overwrite {
+            at: 0,
+            data: b"X".to_vec(),
+        },
+        EditOp::Remove { at: 99, len: 1 },
+    ]);
+    assert!(err.is_err());
+    assert_eq!(ed.materialize(), b"XB");
+}
+
+#[test]
+fn large_remove_uses_cow_snapshot_and_undo_restores_exactly() {
+    assert_eq!(SNAPSHOT_MIN_BYTES, 1 << 20, "阈值必须是 1 MiB");
+    let original: Vec<u8> = (0u32..(2 << 20)).map(|i| (i % 251) as u8).collect();
+    let mut ed = editor(&original);
+
+    ed.remove(0, 2 << 20).unwrap();
+    assert!(ed.is_empty());
+    assert_eq!(ed.undo_snapshot_count(), 1, "2 MiB 删除必须走快照路径");
+    assert!(
+        ed.undo_bytes() >= 2 << 20,
+        "快照必须计入 undo_bytes 预算（实际 {}）",
+        ed.undo_bytes()
+    );
+
+    assert!(ed.undo());
+    assert_eq!(ed.undo_snapshot_count(), 0);
+    assert_eq!(ed.materialize(), original, "撤销快照后必须逐字节相等");
+}
+
+#[test]
+fn small_edits_do_not_take_snapshots() {
+    let mut ed = editor(b"abcdef");
+    ed.overwrite(0, b"X").unwrap();
+    ed.insert(1, b"Y").unwrap();
+    ed.remove(0, 1).unwrap();
+    assert_eq!(ed.undo_snapshot_count(), 0, "小编辑仍是逐字节逆操作");
+    assert_eq!(ed.undo_all(), 3);
+    assert_eq!(ed.materialize(), b"abcdef".to_vec());
+}
+
+#[test]
+fn large_overwrite_uses_snapshot_too() {
+    let original = vec![0u8; (1 << 20) + 4];
+    let mut ed = editor(&original);
+    ed.overwrite(0, &vec![0x5A; 1 << 20]).unwrap();
+    assert_eq!(ed.undo_snapshot_count(), 1, "1 MiB 覆盖也必须走快照");
+    assert!(ed.undo());
+    assert_eq!(ed.materialize(), original);
+}
+
+#[test]
+fn large_remove_on_source_table_uses_snapshot() {
+    let original: Vec<u8> = (0u32..(2 << 20)).map(|i| (i % 251) as u8).collect();
+    let src = Arc::new(MemoryProvider::new("test", original.clone()));
+    let table = PieceTable::from_source(original.len() as u64);
+    let mut ed = Editor::new(table, src);
+    ed.remove(0, 2 << 20).unwrap();
+    assert_eq!(ed.undo_snapshot_count(), 1, "源表大删除也必须走快照");
+    assert!(ed.undo());
+    assert_eq!(ed.materialize(), original, "源表快照撤销后逐字节相等");
 }
