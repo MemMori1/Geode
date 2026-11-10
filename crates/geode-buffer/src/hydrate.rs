@@ -114,7 +114,7 @@ impl PieceTable {
     }
 }
 
-fn read_exact(src: &dyn Provider, at: u64, len: u64) -> Result<Vec<u8>, HydrateError> {
+pub(crate) fn read_exact(src: &dyn Provider, at: u64, len: u64) -> Result<Vec<u8>, HydrateError> {
     let mut buf = vec![0u8; usize::try_from(len).unwrap_or(0)];
     let report = src.read_range(Offset::new(at), &mut buf)?;
     if report.filled != len {

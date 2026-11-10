@@ -3,6 +3,7 @@
 
 use geode_buffer::piece::{Piece, PieceTable, Span};
 use geode_buffer::tree::PieceTree;
+use geode_provider::MemoryProvider;
 use proptest::prelude::*;
 
 fn bytes_of_spans(spans: Vec<Span<'_>>, src: &[u8]) -> Vec<u8> {
@@ -90,4 +91,77 @@ proptest! {
             prop_assert_eq!(a, b);
         }
     }
+}
+
+#[test]
+fn tree_demotes_small_placeholders_like_the_table() {
+    let src: Vec<u8> = (0..16 * 1024).map(|i| (i % 251) as u8).collect();
+    let p = MemoryProvider::new("mem", src.clone());
+    let mut tree = PieceTree::from_source(src.len() as u64);
+    let mut table = PieceTable::from_source(src.len() as u64);
+    tree.overwrite(100, &[0xAA]).unwrap();
+    table.overwrite(100, &[0xAA]).unwrap();
+
+    assert_eq!(tree.demote_small_placeholders(&p).unwrap(), 1);
+    assert_eq!(table.demote_small_placeholders(&p).unwrap(), 1);
+
+    for s in tree.spans(0, tree.len()) {
+        if let Span::Source { len, .. } = s {
+            assert!(len >= 4096, "树里还剩 {len} 字节的 placeholder");
+        }
+    }
+    assert_eq!(
+        bytes_of_spans(tree.spans(0, tree.len()), &src),
+        bytes_of_spans(table.spans(0, table.len()), &src)
+    );
+}
+
+#[test]
+fn tree_defragment_is_local() {
+    let src: Vec<u8> = (0..16 * 1024).map(|i| (i % 251) as u8).collect();
+    let p = MemoryProvider::new("mem", src.clone());
+    let mut tree = PieceTree::from_source(src.len() as u64);
+    tree.defragment(1000, 200, &p).unwrap();
+    assert!(tree.height() <= 2);
+    assert_eq!(bytes_of_spans(tree.spans(0, tree.len()), &src), src);
+    let first = &tree.spans(0, 1)[0];
+    assert!(matches!(first, Span::Source { .. }));
+}
+
+#[test]
+fn tree_demote_reports_short_reads() {
+    struct Empty;
+    impl std::fmt::Debug for Empty {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("Empty")
+        }
+    }
+    impl geode_provider::Provider for Empty {
+        fn id(&self) -> geode_core::ProviderId {
+            geode_core::ProviderId::new(1)
+        }
+        fn display_name(&self) -> String {
+            "empty".into()
+        }
+        fn caps(&self) -> geode_provider::Caps {
+            geode_provider::Caps::READ_ONLY_STABLE
+        }
+        fn size(&self) -> geode_provider::SizeInfo {
+            geode_provider::SizeInfo::Known(0)
+        }
+        fn read_range(
+            &self,
+            _at: geode_core::Offset,
+            _buf: &mut [u8],
+        ) -> Result<geode_provider::ReadReport, geode_provider::ProviderError> {
+            Ok(geode_provider::ReadReport {
+                filled: 0,
+                holes: 0,
+                eof_hit: true,
+            })
+        }
+    }
+    let mut tree = PieceTree::from_source(16 * 1024);
+    tree.overwrite(10, &[1]).unwrap();
+    assert!(tree.demote_small_placeholders(&Empty).is_err());
 }

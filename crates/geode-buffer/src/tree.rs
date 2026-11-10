@@ -10,7 +10,9 @@
 //! 也允许节点欠载。换来的是 `split`/`join` 不需要 borrow/merge 那一套，先让 O(log n)
 //! 的读路径跑起来；等 S1 的碎片化结论出来再决定是否收紧。ADR-0019 记了这笔账。
 
+use crate::hydrate::{HydrateError, MIN_PLACEHOLDER};
 use crate::piece::{EditError, MAX_LITERAL, Piece, Span};
+use geode_provider::Provider;
 
 /// 每个节点的最大子项数（叶：piece 数；内部节点：子节点数）。
 pub const MAX_KIDS: usize = 64;
@@ -249,6 +251,13 @@ fn collect_spans<'a>(node: &'a Node, from: u64, end: u64, base: u64, out: &mut V
     }
 }
 
+fn walk_pieces_mut(node: &mut Node, f: &mut impl FnMut(&mut Piece)) {
+    match &mut node.kind {
+        Kind::Leaf(pieces) => pieces.iter_mut().for_each(f),
+        Kind::Inner(kids) => kids.iter_mut().for_each(|k| walk_pieces_mut(k, f)),
+    }
+}
+
 /// 计数树本体。
 #[derive(Debug, Default)]
 pub struct PieceTree {
@@ -435,4 +444,74 @@ fn chunks(data: &[u8]) -> Vec<Piece> {
     data.chunks(MAX_LITERAL)
         .map(|c| Piece::Literal(c.to_vec().into()))
         .collect()
+}
+
+impl PieceTree {
+    /// **R1**：把所有 `< 4 KiB` 的 placeholder 读成 literal（04 §3.3）。
+    ///
+    /// 字节长度不变，因此节点的 `bytes` 计数不需要重算。
+    pub fn demote_small_placeholders(&mut self, src: &dyn Provider) -> Result<usize, HydrateError> {
+        let mut demoted = 0usize;
+        let mut err = None;
+        if let Some(root) = &mut self.root {
+            walk_pieces_mut(root, &mut |p| {
+                if err.is_some() {
+                    return;
+                }
+                if let Piece::Source { start, len } = *p {
+                    if len < MIN_PLACEHOLDER {
+                        match crate::hydrate::read_exact(src, start, len) {
+                            Ok(buf) => {
+                                *p = Piece::Literal(buf.into());
+                                demoted += 1;
+                            }
+                            Err(e) => err = Some(e),
+                        }
+                    }
+                }
+            });
+        }
+        match err {
+            Some(e) => Err(e),
+            None => Ok(demoted),
+        }
+    }
+
+    /// 局部 literal 化（04 §4.4 的 `defragment`）。
+    pub fn defragment(
+        &mut self,
+        at: u64,
+        len: u64,
+        src: &dyn Provider,
+    ) -> Result<(), HydrateError> {
+        if at.saturating_add(len) > self.len {
+            return Err(HydrateError::Edit(EditError::OutOfRange {
+                at,
+                len: self.len,
+            }));
+        }
+        if len == 0 {
+            return Ok(());
+        }
+        let (a, rest) = self.take_split(at);
+        let (mid, c) = split_n(rest, len);
+        let Some(mut mid) = mid else { return Ok(()) };
+        let mut err = None;
+        walk_pieces_mut(&mut mid, &mut |p| {
+            if err.is_some() {
+                return;
+            }
+            if let Piece::Source { start, len } = *p {
+                match crate::hydrate::read_exact(src, start, len) {
+                    Ok(buf) => *p = Piece::Literal(buf.into()),
+                    Err(e) => err = Some(e),
+                }
+            }
+        });
+        if let Some(e) = err {
+            return Err(e);
+        }
+        self.set(concat(concat(a, Some(mid)), c));
+        Ok(())
+    }
 }
