@@ -321,7 +321,7 @@ Markdown（人读）与 JSON（机器读）同源，都来自一个 `AnalysisRep
 | `hash.default_set` | `["crc32","blake3"]` | 任意子集 | 打开时自动算 |
 | `hash.auto_large_threshold` | 256 MiB | 0~∞ | 超过则不自动算 SHA 家族 |
 | `hash.chunked_leaf` | 1 MiB | 4 KiB~16 MiB | 增量树叶子 |
-| `entropy.window` | 1024 | 256/1024/4096 | 滑窗 |
+| `entropy.window` | 512 | 256/512/1024/4096 | 滑窗（M2 实现取 512，步长 window/2） |
 | `entropy.max_buckets` | 1_048_576 | 4K~4M | 摘要内存 = ×12B |
 | `entropy.segments_max` | 4096 | 256~65536 | RLE 段上限 |
 | `dist.bigram` | on | on/off | 大文件可关 |

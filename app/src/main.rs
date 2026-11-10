@@ -9,6 +9,8 @@
 use geode_core::Offset;
 use geode_provider::page_cache::CachedProvider;
 use geode_provider::{FileProvider, Provider};
+mod window;
+
 use std::process::ExitCode;
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -24,11 +26,24 @@ fn main() -> ExitCode {
             println!("geode {VERSION}");
             ExitCode::SUCCESS
         }
+        Some("--inspect") => match args.get(1) {
+            Some(path) => match inspect(path) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("{e}");
+                    ExitCode::FAILURE
+                }
+            },
+            None => {
+                eprintln!("`--inspect` 需要一个文件路径");
+                ExitCode::FAILURE
+            }
+        },
         Some(flag) if flag.starts_with('-') => {
             eprintln!("未知参数 `{flag}`（`geode --help` 查看用法）");
             ExitCode::FAILURE
         }
-        Some(path) => match inspect(path) {
+        Some(path) => match window::run(std::path::Path::new(path)) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("{e}");
@@ -40,12 +55,13 @@ fn main() -> ExitCode {
 
 fn print_help() {
     println!(
-        "geode {VERSION} — 二进制结构分析工具（M0 骨架）\n\n\
-         用法: geode <文件>\n\
+        "geode {VERSION} — 二进制结构分析工具（M2 视图）\n\n\
+         用法: geode <文件>            打开图形窗口\n     \
+               geode --inspect <文件>  无窗口探测（打印大小/caps/头部 256B）\n\
          选项:\n  \
            -h, --help     显示本帮助\n  \
            -V, --version  显示版本\n\n\
-         当前里程碑只做只读探测；编辑、BinSpec 解析、UI 见 docs/18 §10。"
+         快捷键: 方向键移动游标，PageUp/PageDown 翻页，滚轮滚动，右侧滚动条可拖。"
     );
 }
 

@@ -70,6 +70,8 @@ pub struct ScrollPos { pub row: u64, pub sub: f32 }  // 行号 + 行内比例，
 pub struct Cursor { pub off: u64, pub nibble: Nibble }
 pub enum Nibble { Whole, High, Low }
 pub struct Selection { pub anchor: u64, pub head: u64, pub shape: SelShape }
+// 实现注：`geode-ui::selection` 用 `Pos{row,col}` 与 `focus`（= head）而不是裸偏移，
+// 因为渲染需要行列；偏移可用 `Pos::offset(bytes_per_row)` 换算。
 pub enum SelShape { Linear, Block { cols: (u8, u8) } }
 ```
 

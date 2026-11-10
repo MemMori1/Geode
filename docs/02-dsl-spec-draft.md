@@ -40,7 +40,7 @@ u8  u16 u24 u32 u48 u64 u128
 s8  s16 s24 s32 s48 s64 s128
 f16 f32 f64
 bool            // 1 字节，0=false，非0=true
-char            // 1 字节，按 ASCII/Latin-1 显示
+char            // 1 字节，仅 ASCII 0x00–0x7F；≥0x80 解码失败（E1002），多字节字符用 str
 byte            // 1 字节，无符号，按字节显示
 ```
 

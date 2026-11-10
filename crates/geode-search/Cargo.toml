@@ -1,0 +1,21 @@
+[package]
+name = "geode-search"
+description = "Geode 的搜索子系统：hex 通配、多编码字符串、正则、数值范围（M2 T2.6）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+geode-core = { workspace = true }
+geode-provider = { workspace = true }
+
+regex = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true

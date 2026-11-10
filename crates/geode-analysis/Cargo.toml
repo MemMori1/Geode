@@ -1,0 +1,21 @@
+[package]
+name = "geode-analysis"
+description = "Geode 的分析工具箱：哈希、熵、字节分布、字符串提取（M2 T2.7）"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[dependencies]
+geode-core = { workspace = true }
+geode-provider = { workspace = true }
+
+blake3 = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints]
+workspace = true
