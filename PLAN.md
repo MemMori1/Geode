@@ -38,7 +38,7 @@ Sprint 0 的"尺子"基本造完（P1/P2/P3/P5 与 S3 已完成，P4 2/6），M1
 | P3 | `tests/vectors/` 每格式 ≥3 个损坏向量 | 0.2 | 每个损坏向量写明"期望哪个错误码"，CI 校验该码已登记 | `[x]` 结构完成：4 格式 16 条样本（含 12 条损坏），`xtask vectors-check` 双向校验；**字节级真跑待 M1 的 `geode-format`（`--run`）** |
 | P4 | bench 骨架（criterion，先 6 项：open_4gb / scroll_p99 / save_1gb / read_64k / edit_random / undo_all） | 0.3 | `cargo bench` 能跑；`xtask bench audit` 认得出 6 项与 00 §7 的对应关系 | `[~]` 2/6 实现（open_4gb 6.19 µs、read_64k 889 ns）；registry 已登记 4 项阻塞原因 |
 | P5 | proptest 骨架（piece table vs `Vec<u8>` 影子对拍） | 0.2 | 随机操作序列 1 万次，双实现对拍无差异（此时 buffer 还没有编辑，先锁只读读路径） | `[x]` 只读路径完成：`ByteRange` 5 条 + `Buffer::read` 2 条属性；编辑对拍随 T1.4/T1.5 接入 |
-| S1 | spike：placeholder 4 KiB 下限是否碎片化 | 0.5 | 1 万次随机编辑后 `piece ≤ O(C + 改动字节/4KiB)`、内存放大 <2× | `[ ]` |
+| S1 | spike：placeholder 4 KiB 下限是否碎片化 | 0.5 | 1 万次随机编辑后 `piece ≤ O(C + 改动字节/4KiB)`、内存放大 <2× | `[x]` **通过**：1 万次编辑后 36 片（理论上界 88 片的 0.4×），描述子 1.1 KiB；无 R1 则 16,823 片（191×），证明 R1 是界的前提；见 `docs/spikes/S1-placeholder-fragmentation.md` |
 | S2 | spike：journal 不逐条 fsync 在 `kill -9` 下的丢帧窗口 | 0.3 | 1000 次随机时刻 kill：最大丢失 ≤1 秒编辑、恢复成功率 100% | `[ ]` |
 | S3 | 纯 `Painter` 5000 quad/帧 | 0.4 | 一屏 ~5000 图元整帧 <16.6 ms | `[x]` **通过**：15,360 图元 0.83 ms（余量 20×）；见 `docs/spikes/S3-painter-throughput.md`。不含 GPU 提交与命中测试 |
 | S4 | spike：`epaint` 字体图集按字体局部失效 | 0.3 | 换字体不全量重建；首帧到可交互 <1.2 s | `[ ]` |
@@ -71,6 +71,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 
 | 日期 | 做了什么 | 证据 |
 |---|---|---|
+| 2026-11-10 | **S1 完成**：4 KiB + R1/R3 后 36 片（界内 0.4×）、描述子 1.1 KiB；无 R1 则 16,823 片（191×）；病态 1 MiB/10 万次 1 字节 ⇒ 不合并 182k 片、4 KiB 合并 17 片；指出 `04 §3.3` 两处措辞需修正 | `c112668` |
 | 2026-11-10 | **T1.4 编辑会话**：`edit.rs` 覆盖/插入/删除/`fill`/`nibble`（400 ms 分组），逆操作撤销，patch 间隙 ≤16 归并（含 gap 字节）；10 条测试含 2,000 次随机编辑后 `undo_all` 逐字节相等；顺带修 `PieceTree::split` 在子节点边界 panic（proptest 抓到） | `1e64d1d` |
 | 2026-11-10 | **T1.5 撤销预算**：`min(512MB, max(64MB, 2%×len))`，`VecDeque` 撤销栈、超预算丢最早步且至少留一步；`default_undo_limit` 边界测试 | `226ebfa` |
 | 2026-11-10 | **geode-format 落地**：`.geopatch`/`.geojournal` 编解码，自实现 CRC32，8 条向量（6 条损坏）全过；`decode_prefix` 供 journal 前缀恢复；schema 枚举纠正 | `a11550c` |
