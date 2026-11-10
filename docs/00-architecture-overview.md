@@ -380,7 +380,7 @@ pub enum UiEvent { Progress(JobId, f32), Diag(Vec<Diag>), Done(JobId, JobResult)
 | `24-migration-and-interop.md` | 从外部生态导入模板、IR、GPL 红线、反向导出 | Verifier 本身（见 03） |
 | `25-ux-flows-and-copy.md` | 核心旅程、线框、文档状态机、文案规范 | 视觉与主题（见 16） |
 | `26-visual-design.md` | 栅格/字阶/hex 几何/四态/图标/四套主题色表/像素回归基线 | 交互流程与文案（见 25） |
-| `27-error-code-dictionary.md`（待写，见 18 §10.4） | 126 个诊断码的集中字典：每码一句人话、触发条件、可执行修复动作；由 `xtask docs-errors` 生成并双向校验 | 各段语义本身（引用 §12 与本表各文档） |
+| `27-error-code-dictionary.md`（已写（126 码全表），见 18 §10.4） | 126 个诊断码的集中字典：每码一句人话、触发条件、可执行修复动作；由 `xtask docs-errors` 双向校验 | 各段语义本身（引用 §12 与本表各文档） |
 | `28-cli-reference.md`（待写，见 18 §10.4） | CLI 参数、退出码约定、脚本化与 `--headless` 用法 | GUI 交互与快捷键（引用 16） |
 | `img/mockup.html` | 单文件可视化原型（零外链，可离线双击） | 实现参考，非规范 |
 | `img/pages/index.html` + `demo.html` | 8 屏页面设计稿与三套主题演示（零外链） | 实现参考，非规范；配色以 26 §4.9 为准 |

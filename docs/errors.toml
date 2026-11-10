@@ -4,7 +4,7 @@
 # `cargo xtask docs-errors` 会：① 校验本表与 docs/ 里出现的码双向一致；
 # ② 生成 crates/geode-core/src/error_codes.rs。手改生成文件无效，CI 会打回。
 #
-# severity: info | warning | error | fatal（当前按段默认 error，逐码复核随 27 文档进行）
+# severity: info | warning | error | fatal（已按 27 文档逐码复核；新增码沿用段默认值）
 # title:    一句话释义；留空表示尚未写，27 文档补齐后 CI 统计会降到 0
 
 [[code]]
@@ -12,453 +12,490 @@ id = "E0001"
 segment = "E0"
 owner = "geode-xtask"
 severity = "error"
+title = "主题加载时颜色 token 缺失"
 
 [[code]]
 id = "E0101"
 segment = "E0"
 owner = "geode-xtask"
 severity = "error"
+title = "GUI 污染：非 `geode-ui`/`app` 的 crate 引入了 GUI 依赖"
 
 [[code]]
 id = "E0102"
 segment = "E0"
 owner = "geode-xtask"
 severity = "error"
+title = "依赖方向倒置：依赖的层号不小于自身层号"
 
 [[code]]
 id = "E0103"
 segment = "E0"
 owner = "geode-xtask"
 severity = "error"
+title = "依赖边不在允许矩阵里"
 
 [[code]]
 id = "E0104"
 segment = "E0"
 owner = "geode-xtask"
 severity = "error"
+title = "C/C++ 后端依赖没走 feature flag"
 
 [[code]]
 id = "E0105"
 segment = "E0"
 owner = "geode-xtask"
 severity = "error"
+title = "传递依赖把 GUI 拽进了非 UI crate"
 
 [[code]]
 id = "E0120"
 segment = "E0"
 owner = "geode-xtask"
 severity = "error"
-title = "主题 `nord` 缺少 3 个颜色定义：`layer.ai`、`hex.null-byte`、`severity.info`。"
+title = "主题 token 不完整或不可用"
 
 [[code]]
 id = "E0130"
 segment = "E0"
 owner = "geode-xtask"
 severity = "error"
-title = "字体 `MyMono.ttf` 不是等宽字体：`i` 与 `W` 宽度相差 31%。"
+title = "hex 字体不是等宽字体"
 
 [[code]]
 id = "E1001"
 segment = "E1"
 owner = "geode-bspec"
 severity = "error"
-title = "enum value not in declaration"
+title = "字段值不在枚举声明里"
 
 [[code]]
 id = "E1002"
 segment = "E1"
 owner = "geode-bspec"
 severity = "error"
-title = "invalid byte sequence for encoding"
+title = "字节序列不是该编码的合法文本"
 
 [[code]]
 id = "E1004"
 segment = "E1"
 owner = "geode-bspec"
 severity = "error"
-title = "偏移 0x1000 的 magic 不匹配：期望 `50 4B 03 04`，实际 `00 00 00 00`。"
+title = "偏移处 magic 与期望不符"
 
 [[code]]
 id = "E1005"
 segment = "E1"
 owner = "geode-bspec"
 severity = "error"
-title = "assertion failed"
+title = "断言失败：`#[assert]` 或 `assert()` 求值为假"
 
 [[code]]
 id = "E1006"
 segment = "E1"
 owner = "geode-bspec"
 severity = "error"
-title = "数据不匹配·断言：`#[assert]` 或 `assert()` 失败（**不归 E5**，E5 只表示前置上下文缺失）"
+title = "断言失败（02 §8.2 口径，不归 E5 段）"
 
 [[code]]
 id = "E2001"
 segment = "E2"
 owner = "geode-bspec"
 severity = "error"
-title = "模板在第 3 个循环第 412 次迭代处耗尽执行预算（1 秒）。"
+title = "执行步数预算耗尽"
 
 [[code]]
 id = "E2002"
 segment = "E2"
 owner = "geode-bspec"
 severity = "error"
-title = "wall time budget exceeded"
+title = "墙钟时间预算耗尽"
 
 [[code]]
 id = "E2003"
 segment = "E2"
 owner = "geode-bspec"
 severity = "error"
-title = "recursion/depth limit reached"
+title = "递归或嵌套深度超限"
 
 [[code]]
 id = "E2004"
 segment = "E2"
 owner = "geode-bspec"
 severity = "error"
-title = "output size limit exceeded"
+title = "解析产物超过大小上限"
 
 [[code]]
 id = "E2005"
 segment = "E2"
 owner = "geode-bspec"
-severity = "error"
-title = "cancelled by user"
+severity = "info"
+title = "解析被用户取消"
 
 [[code]]
 id = "E3001"
 segment = "E3"
 owner = "geode-bspec"
 severity = "error"
-title = "read out of bounds"
+title = "读取越过文件末尾"
 
 [[code]]
 id = "E3002"
 segment = "E3"
 owner = "geode-bspec"
 severity = "error"
-title = "resume target outside file"
+title = "`@` 恢复点指向文件外"
 
 [[code]]
 id = "E3003"
 segment = "E3"
 owner = "geode-bspec"
 severity = "error"
-title = "allocation exceeds limit"
+title = "单次分配或读取超过上限"
 
 [[code]]
 id = "E3004"
 segment = "E3"
 owner = "geode-bspec"
 severity = "error"
-title = "division by zero"
+title = "表达式除零"
 
 [[code]]
 id = "E3010"
 segment = "E3"
 owner = "geode-bspec"
 severity = "error"
+title = "尺寸探测超过探测上限"
 
 [[code]]
 id = "E4001"
 segment = "E4"
 owner = "geode-bspec"
 severity = "error"
-title = "unexpected token"
+title = "语法错误：此处不该出现该 token"
 
 [[code]]
 id = "E4002"
 segment = "E4"
 owner = "geode-bspec"
 severity = "error"
-title = "type mismatch"
+title = "类型不匹配"
 
 [[code]]
 id = "E4003"
 segment = "E4"
 owner = "geode-bspec"
 severity = "error"
-title = "undefined symbol"
+title = "使用了未定义的符号"
 
 [[code]]
 id = "E4004"
 segment = "E4"
 owner = "geode-bspec"
 severity = "error"
-title = "fixed struct size mismatch"
+title = "定长结构声明大小与成员实际大小不符"
 
 [[code]]
 id = "E4007"
 segment = "E4"
 owner = "geode-bspec"
 severity = "error"
+title = "结构定义相互引用成环，编译期拒绝"
 
 [[code]]
 id = "E5001"
 segment = "E5"
 owner = "geode-bspec"
 severity = "error"
-title = "image_base not provided"
+title = "模板用了 `rva`/`va` 指针但没给 `image_base`"
 
 [[code]]
 id = "E5002"
 segment = "E5"
 owner = "geode-bspec"
 severity = "error"
-title = "required context missing"
+title = "缺少解析所需的前置上下文"
 
 [[code]]
 id = "E6001"
 segment = "E6"
 owner = "geode-provider"
 severity = "error"
-title = "无法读取 `/dev/rdisk2`：需要管理员权限。"
+title = "打开数据源时权限不足"
 
 [[code]]
 id = "E6002"
 segment = "E6"
 owner = "geode-provider"
 severity = "error"
-title = "目标进程 4812 已退出，内存不再可读。"
+title = "数据源目标已消失"
 
 [[code]]
 id = "E6003"
 segment = "E6"
 owner = "geode-provider"
 severity = "error"
+title = "连接断开，正在重连"
 
 [[code]]
 id = "E6004"
 segment = "E6"
 owner = "geode-provider"
 severity = "error"
+title = "协议超时或响应畸形"
 
 [[code]]
 id = "E6005"
 segment = "E6"
 owner = "geode-provider"
 severity = "error"
+title = "HEX/SREC 记录格式校验失败"
 
 [[code]]
 id = "E6006"
 segment = "E6"
 owner = "geode-provider"
 severity = "error"
+title = "环形缓冲已丢弃该区间"
 
 [[code]]
 id = "E7102"
 segment = "E7"
 owner = "geode-search"
 severity = "error"
-title = "无法搜索 `?? ?? ??`：模式里没有固定字节。"
+title = "hex 模式没有任何固定字节"
 
 [[code]]
 id = "E7103"
 segment = "E7"
 owner = "geode-search"
 severity = "error"
-title = "正则不支持反向引用 `\\1` 与环视 `(?=)`。"
+title = "正则用了反向引用或环视"
 
 [[code]]
 id = "E7104"
 segment = "E7"
 owner = "geode-search"
-severity = "error"
+severity = "warning"
+title = "跨块长匹配可能被漏掉"
 
 [[code]]
 id = "E7105"
 segment = "E7"
 owner = "geode-search"
 severity = "error"
+title = "数值搜索的宽度非法或输入不足"
 
 [[code]]
 id = "E8001"
 segment = "E8"
 owner = "geode-viz"
-severity = "error"
+severity = "warning"
+title = "可视化参数文法错误或含未知 key"
 
 [[code]]
 id = "E8002"
 segment = "E8"
 owner = "geode-viz"
 severity = "error"
+title = "未知可视化器 id 或格式不支持"
 
 [[code]]
 id = "E8003"
 segment = "E8"
 owner = "geode-viz"
 severity = "error"
+title = "解码途中失败（截断或损坏）"
 
 [[code]]
 id = "E8004"
 segment = "E8"
 owner = "geode-viz"
 severity = "error"
-title = "无法显示图片：头部声明 60000×60000 像素。"
+title = "声明尺寸或参数超限，拒绝分配"
 
 [[code]]
 id = "E8005"
 segment = "E8"
 owner = "geode-viz"
-severity = "error"
-title = "可视化器 2 秒内未完成解码，当前显示缩略图。"
+severity = "warning"
+title = "解码超过 2 秒，当前显示缩略图"
 
 [[code]]
 id = "E8006"
 segment = "E8"
 owner = "geode-viz"
 severity = "error"
+title = "图元超预算且无法降采样"
 
 [[code]]
 id = "E8007"
 segment = "E8"
 owner = "geode-viz"
 severity = "error"
+title = "插件可视化器 panic，本会话禁用"
 
 [[code]]
 id = "E9001"
 segment = "E9"
 owner = "geode-plugin-host"
 severity = "error"
+title = "插件目录里有非法文件或 `dlopen` 失败"
 
 [[code]]
 id = "E9002"
 segment = "E9"
 owner = "geode-plugin-host"
-severity = "error"
+severity = "warning"
+title = "manifest 与插件自报元信息不符"
 
 [[code]]
 id = "E9003"
 segment = "E9"
 owner = "geode-plugin-host"
 severity = "error"
-title = "插件 `hexdecoder` 需要宿主 ABI 2.x，当前为 1.4。"
+title = "插件要求更高的宿主 ABI major"
 
 [[code]]
 id = "E9004"
 segment = "E9"
 owner = "geode-plugin-host"
 severity = "error"
+title = "插件要求更高的宿主版本"
 
 [[code]]
 id = "E9005"
 segment = "E9"
 owner = "geode-plugin-host"
 severity = "error"
+title = "插件签名缺失或无效"
 
 [[code]]
 id = "E9006"
 segment = "E9"
 owner = "geode-plugin-host"
 severity = "error"
+title = "插件能力 id 冲突"
 
 [[code]]
 id = "E9007"
 segment = "E9"
 owner = "geode-plugin-host"
 severity = "error"
-title = "插件 `quickstat` 解析时崩溃，本会话已禁用。"
+title = "插件 panic，本会话已禁用"
 
 [[code]]
 id = "E9008"
 segment = "E9"
 owner = "geode-plugin-host"
 severity = "error"
+title = "插件无响应（死循环）"
 
 [[code]]
 id = "E9009"
 segment = "E9"
 owner = "geode-plugin-host"
 severity = "error"
+title = "插件进程崩溃（段错误）"
 
 [[code]]
 id = "E9010"
 segment = "E9"
 owner = "geode-plugin-host"
 severity = "error"
+title = "插件超配额分配"
 
 [[code]]
 id = "E9011"
 segment = "E9"
 owner = "geode-plugin-host"
 severity = "error"
+title = "插件未实现必需函数"
 
 [[code]]
 id = "E9012"
 segment = "E9"
 owner = "geode-plugin-host"
 severity = "error"
+title = "热重载失败，已回滚旧版"
 
 [[code]]
 id = "EA001"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
-title = "无法安装 `tpl.zip 1.4.0`：文件摘要与索引登记不一致。"
+title = "包摘要与索引登记不一致"
 
 [[code]]
 id = "EA002"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
-title = "无法安装 `theme.nord 1.2.0`：签名校验失败。"
+title = "包签名校验失败"
 
 [[code]]
 id = "EA003"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
-title = "tpl.xyz 0.3.0` 的签名者 `ed25519:deadbeef` 不在受信列表。"
+title = "签名者密钥不在受信列表"
 
 [[code]]
 id = "EA004"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "包内 entry 路径穿越（zip slip）"
 
 [[code]]
 id = "EA005"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "解压炸弹（配额或压缩比超限）"
 
 [[code]]
 id = "EA006"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "磁盘空间不足"
 
 [[code]]
 id = "EA007"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "内容索引解析失败"
 
 [[code]]
 id = "EA010"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "没有可回滚的版本"
 
 [[code]]
 id = "EA012"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "用户版本 `content_api` 不兼容，已回退内置"
 
 [[code]]
 id = "EA020"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "依赖版本冲突"
 
 [[code]]
 id = "EA021"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "依赖成环"
 
 [[code]]
 id = "EA101"
@@ -471,18 +508,21 @@ id = "EA102"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "manifest 出现可执行钩子字段"
 
 [[code]]
 id = "EA103"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "模板嵌套、递归或源码超限"
 
 [[code]]
 id = "EA105"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "magic 库规模超限"
 
 [[code]]
 id = "EA106"
@@ -495,208 +535,238 @@ id = "EA301"
 segment = "EA"
 owner = "geode-content"
 severity = "error"
+title = "内容含 GPL/AGPL/LGPL 许可，索引硬拒"
 
 [[code]]
 id = "EB001"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "文件版本过新（`TooNew`），拒绝加载且不写盘"
 
 [[code]]
 id = "EB002"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "magic、容器不符或 zip 结构违规"
 
 [[code]]
 id = "EB003"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "文本格式语法错（TOML/UTF-8/BOM/控制字符）"
 
 [[code]]
 id = "EB004"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "必填字段缺失，或 `files[]` 与 entry 集合不等"
 
 [[code]]
 id = "EB005"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "取值或范围违规，或 `params` 里有明文密钥"
 
 [[code]]
 id = "EB006"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
+severity = "warning"
+title = "未知枚举值或未知记录 `kind`，降级后继续"
 
 [[code]]
 id = "EB007"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
+severity = "info"
+title = "未知字段（config 保留，项目忽略并告警）"
 
 [[code]]
 id = "EB008"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
+severity = "warning"
+title = "悬空引用"
 
 [[code]]
 id = "EB009"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "路径非法（绝对、`..` 逃根、超长、含 `\\0`）"
 
 [[code]]
 id = "EB010"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "重复主键"
 
 [[code]]
 id = "EB011"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "记录 CRC 不符"
 
 [[code]]
 id = "EB012"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "记录 `seq` 乱序、重复或跳号"
 
 [[code]]
 id = "EB013"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "文件截断（帧跨文件尾或头长不足）"
 
 [[code]]
 id = "EB014"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "长度不符（`record_count`/`FinalLen`/`Overwrite`）"
 
 [[code]]
 id = "EB015"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "`.geopkg` 摘要不符"
 
 [[code]]
 id = "EB016"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "`.geopkg` 验签失败"
 
 [[code]]
 id = "EB017"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "签名密钥未知或不在受信集"
 
 [[code]]
 id = "EB018"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "签名过期或密钥已吊销"
 
 [[code]]
 id = "EB019"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "`.geopkg` 内 zip slip"
 
 [[code]]
 id = "EB020"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "格式配额超限"
 
 [[code]]
 id = "EB021"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
+severity = "warning"
+title = "journal 的 base 指纹不符"
 
 [[code]]
 id = "EB022"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
+severity = "warning"
+title = "锁被占用或锁文件不可解析"
 
 [[code]]
 id = "EB023"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "迁移链缺环"
 
 [[code]]
 id = "EB024"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "迁移时字段类型不符"
 
 [[code]]
 id = "EB025"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
+severity = "warning"
+title = "迁移后置条件失败，降级丢掉 `layout`/`views`"
 
 [[code]]
 id = "EB026"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "迁移非幂等（实现 bug）"
 
 [[code]]
 id = "EB027"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "超出迁移器保留窗口（>3 个大版本）"
 
 [[code]]
 id = "EB028"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
+title = "回滚失败（`.bak` 缺失或损坏）"
 
 [[code]]
 id = "EB029"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
-title = "全部"
+severity = "warning"
+title = "使用了已弃用字段（写侧仍写入）"
 
 [[code]]
 id = "EB030"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
+severity = "warning"
+title = "校验收紧导致旧文件不达标"
 
 [[code]]
 id = "EB101"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
-title = "源语法无法解析"
+title = "迁移源语法无法解析"
 
 [[code]]
 id = "EB102"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
-title = "源超限（1MB / 40k 行）"
+title = "迁移源超限（1MB / 40k 行）"
 
 [[code]]
 id = "EB201"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
-title = "构造不可映射（内嵌运行时/副作用宏）"
+severity = "warning"
+title = "构造不可映射（内嵌运行时或副作用宏）"
 
 [[code]]
 id = "EB202"
@@ -709,7 +779,7 @@ title = "类型依赖成环"
 id = "EB203"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
+severity = "warning"
 title = "游标顺序不可重建（引用未来字段）"
 
 [[code]]
@@ -730,15 +800,15 @@ title = "产物未过 L2 执行"
 id = "EB303"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
-title = "不变量未过（I4 覆盖/I5 长度自洽）"
+severity = "warning"
+title = "不变量未过（I4 覆盖或 I5 长度自洽）"
 
 [[code]]
 id = "EB401"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
-title = "origin` 缺失或不完整"
+title = "`origin` 缺失或不完整"
 
 [[code]]
 id = "EB402"
@@ -752,68 +822,67 @@ id = "EB403"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
-title = "local-only` 产物尝试 `--pack"
+title = "`local-only` 产物尝试 `--pack`"
 
 [[code]]
 id = "EB404"
 segment = "EB"
 owner = "geode-format"
-severity = "error"
-title = "与已知 GPL 语料 5-gram 相似度 > 0.6"
+severity = "warning"
+title = "与已知 GPL 语料 5-gram 相似度 >0.6"
 
 [[code]]
 id = "EB501"
 segment = "EB"
 owner = "geode-format"
 severity = "error"
-title = "CLI IO / 目标已存在且无 `--force"
+title = "CLI IO 失败，或目标已存在且未给 `--force`"
 
 [[code]]
 id = "EC001"
 segment = "EC"
 owner = "geode-core"
 severity = "error"
-title = "安全策略拒绝（需用户显式放行）"
+title = "安全策略拒绝，需要用户显式放行"
 
 [[code]]
 id = "EC002"
 segment = "EC"
 owner = "geode-core"
 severity = "error"
-title = "路径越出白名单根或被判为不安全条目"
+title = "路径越出白名单根，或条目被判不安全"
 
 [[code]]
 id = "EC003"
 segment = "EC"
 owner = "geode-core"
 severity = "error"
-title = "输入声明的尺寸/数量超上限（**拒绝**，非失败）"
+title = "输入声明的尺寸或数量超上限（拒绝，不是失败）"
 
 [[code]]
 id = "EC004"
 segment = "EC"
 owner = "geode-core"
 severity = "error"
-title = "破坏性操作缺少二次确认（程序性错误，仅内部）"
+title = "破坏性操作缺少二次确认（程序性错误）"
 
 [[code]]
 id = "EC005"
 segment = "EC"
 owner = "geode-core"
 severity = "error"
-title = "将在写出物中发现凭据类字段"
+title = "写出物中发现凭据类字段"
 
 [[code]]
 id = "EC006"
 segment = "EC"
 owner = "geode-core"
 severity = "error"
-title = "远程目标未经用户同意（`providers` 段静默连网）"
+title = "远程目标未经用户同意"
 
 [[code]]
 id = "EC007"
 segment = "EC"
 owner = "geode-core"
 severity = "error"
-title = "预算/配额由**输入**而非用户设置提供（程序性错误）"
-
+title = "预算或配额来自输入而非用户设置（程序性错误）"
