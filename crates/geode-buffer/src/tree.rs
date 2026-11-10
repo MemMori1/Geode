@@ -152,6 +152,11 @@ fn split(node: Node, at: u64) -> (Option<Node>, Option<Node>) {
                 pos += k.bytes;
             }
             let mut kids = kids;
+            if at == pos {
+                // 切点正好落在子节点边界上：不需要拆任何节点（proptest 抓到的真 bug）。
+                let right = kids.split_off(idx);
+                return (pack_nodes(kids), pack_nodes(right));
+            }
             let mid = kids.remove(idx);
             let (l, r) = split(mid, at - pos);
             let mut left: Vec<Node> = kids.drain(..idx).collect();

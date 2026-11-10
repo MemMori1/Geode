@@ -16,6 +16,7 @@ use geode_core::{ByteRange, Offset};
 use geode_provider::{Caps, Provider, ProviderError, SizeInfo};
 use std::fmt;
 
+pub mod edit;
 pub mod hydrate;
 pub mod piece;
 pub mod save;
