@@ -169,17 +169,35 @@ job(PassPlan) ─► 逐 1 MiB chunk（provider.read_at）
 
 **为什么自建（D4）**：libmagic 依赖外部数据库（不可嵌入单二进制）、规则无版本化、Windows 上易触杀软签名兼容问题，且需要**模板市场**能下发新规则（15）。代价是覆盖度自己攒：内置 206 条 + 市场增量。
 
-`.gmagic` 规则子集（文本，**`schema_version` 必填**——本规范向 `23 §3.8` 补的字段，早稿缺失）：
+`.gmagic` 规则子集（文本，**`schema_version` 必填**——本规范向 `23 §3.7` 补的字段，早稿缺失）：
 
 ```toml
+schema_version = 1
+kind = "gmagic"
+
 [magic.png]
-mime = "image/png"; ext = ["png"]; kind = "image"; weight = 10; read = 64   # read 硬上限 4KB
-[[magic.png.test]] off = 0;  len = 8; mask = "ffffffffffffffff"; value = "89504E470D0A1A0A"
-[[magic.png.test]] off = 12; len = 4; value = "49484452"; required = false  # 可选证据 +weight
-[[magic.png.test]] jump = 8; len = 4; op = "eq"; value = "49484452"        # 跳转指令
+mime = "image/png"
+ext = ["png"]
+kind = "image"
+weight = 10
+read = 64                      # 硬上限 4096 B
+
+[[magic.png.test]]
+off = 0
+len = 8
+mask = "FFFFFFFFFFFFFFFF"
+value = "89504E470D0A1A0A"
+
+[[magic.png.test]]
+off = 12
+len = 4
+value = "49484452"
+required = false               # 可选证据，命中时加分
 ```
 
-可用指令（全部有界）：`LOAD{off,len}`、`MASK`、`EQ/NE/LT/GT`、`IN_RANGE`、`CONTAINS`、`JUMP{from_read}`、`REQUIRE/OPTIONAL`、`RET{score}`。编译成线性字节码，**每规则 ≤64 条指令、≤8KB 读取**，杜绝病态规则。
+> **v1 实现子集**：只支持 `op = "eq"`（其它 `ne/lt/gt/in_range/contains` 与 `jump` 暂报 `EB005`）；`patterns` 与 `test[]` 二选一，不得同时出现。
+
+可用指令（全部有界）：`LOAD{off,len}`、`MASK`、`EQ/NE/LT/GT`、`IN_RANGE`、`CONTAINS`、`JUMP{from_read}`、`REQUIRE/OPTIONAL`、`RET{score}`。编译成线性字节码，**每规则 ≤64 条 pattern、≤16 条 test、读取窗口 `read ≤4096 B`**，杜绝病态规则（v1 的实现见 `geode-analysis::magic`）。
 
 **内置覆盖 206 种**：图像 24、音视频 26、归档/压缩 30、可执行/对象/库 28、文档 22、数据库/序列化 18、字体 6、磁盘镜像/固件 14、抓包/协议 8、游戏 ROM/存档 10、其他 20。
 

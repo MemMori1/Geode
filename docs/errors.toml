@@ -748,6 +748,13 @@ severity = "warning"
 title = "校验收紧导致旧文件不达标"
 
 [[code]]
+id = "EB031"
+segment = "EB"
+owner = "geode-analysis"
+severity = "error"
+title = "未知 magic pattern 类型"
+
+[[code]]
 id = "EB101"
 segment = "EB"
 owner = "geode-format"

@@ -89,7 +89,7 @@
 
 **依赖方向唯一**：箭头只能向下。任何"下游要知道上游"的需求，用事件/回调/泛型参数解决，不开反向依赖。
 
-补充一个后加的 crate：**`geode-format`**（L0，纯 CPU）：7 个自有格式（`.geows`/`.geoproj`/`.geopkg`/`.geopatch`/`.gmagic`/`.geojournal`/`.geolock`）的读写、版本探测与迁移的唯一实现。它不持有数据源、不碰 `Provider`，只认字节与 TOML，避免每个使用方各自写一份"如何判定版本"。规范见 `23-file-formats`。
+补充一个后加的 crate：**`geode-format`**（L0，纯 CPU）：**二进制**自有格式（`.geows`/`.geoproj`/`.geopkg`/`.geopatch`/`.geojournal`/`.geolock`）的读写、版本探测与迁移的唯一实现。`.gmagic` 是 TOML 规则集、由 `geode-analysis`（`magic` 模块）解析，不在 `geode-format` 的职责内。它不持有数据源、不碰 `Provider`，只认字节与 TOML，避免每个使用方各自写一份"如何判定版本"。规范见 `23-file-formats`。
 
 补充一个后加的 crate：**`geode-viz`**（字段可视化器的解码与度量，纯 CPU，禁止任何 GUI 依赖），位于 `geode-analysis` 同层，被 `geode-ui`（绘制）与 `geode-plugin-host`（注册插件可视化器）使用。见 `13-visualizers §2`。
 

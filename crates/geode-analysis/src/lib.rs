@@ -32,6 +32,7 @@ pub mod entropy;
 pub mod error;
 pub mod hash;
 pub mod histogram;
+pub mod magic;
 pub mod strings;
 
 pub use analyzer::{AnalysisReport, Analyzer, CHUNK_SIZE, DigestResult, ENTROPY_BUCKET_CAP};
@@ -46,6 +47,10 @@ pub use hash::{
     Hasher, hash_bytes, hash_hex, hash_stream, hex_encode, new_hasher,
 };
 pub use histogram::ByteHistogram;
+pub use magic::{
+    Endian, MAX_FILE_BYTES, MAX_HEAD_BYTES, MAX_PATTERNS_PER_RULE, MAX_RULES, MAX_TESTS_PER_RULE,
+    MagicHit, MagicPattern, MagicRule, MagicSet,
+};
 pub use strings::{
     DEFAULT_MAX_ENTRIES, DEFAULT_MIN_LEN, FoundString, MAX_STRING_CHARS, StringEncoding,
     StringsCfg, StringsResult, StringsScanner, extract_ascii, extract_strings, extract_utf16le,

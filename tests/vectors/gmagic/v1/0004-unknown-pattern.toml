@@ -1,0 +1,12 @@
+# 未知 pattern 类型 `regex`：只支持 bytes/ascii/u16/u32（EB031）。
+
+schema_version = 1
+
+[magic.regex]
+name = "正则规则"
+mime = "application/octet-stream"
+
+[[magic.regex.patterns]]
+type = "regex"
+offset = 0
+text = "^GIF8"

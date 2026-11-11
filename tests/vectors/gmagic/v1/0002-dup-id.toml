@@ -1,0 +1,22 @@
+# 重复规则 id：数组形式下两个 `[[magic]]` 都声明 id = "dup"（EB010）。
+# 表形式 `[magic.dup]` 无法表达重复键（TOML 本身会报语法错），故用数组形式。
+
+schema_version = 1
+
+[[magic]]
+id = "dup"
+name = "第一条"
+mime = "application/octet-stream"
+
+[[magic.patterns]]
+type = "bytes"
+bytes = "00"
+
+[[magic]]
+id = "dup"
+name = "第二条"
+mime = "application/octet-stream"
+
+[[magic.patterns]]
+type = "bytes"
+bytes = "01"

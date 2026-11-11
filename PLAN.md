@@ -91,9 +91,9 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 | ID | 任务 | 人日 | 验收 | 状态 |
 |---|---|---|---|---|
 | A0 | 词法/语法/AST/`SrcSpan`+`LineIndex`/错误恢复 | 15 | 解析 02 §11 全部示例；一次报 ≥3 个错 | `[x]` **完成**：lexer 1274 + parser 1884 + ast 672 + span 243 + diag 187 = 4260 行；31 前端测试（含 3 proptest）；一次报 3 错；与 02 的 9 条偏差已记录（词法码暂用 E4001、`Diag.range` 暂存源 span） |
-| A1 | 字节码 + VM（预算、取消、软失败、`Node` 树） | 18 | 死循环 5s 内 E2001；越界字段降级 unknown | `[~]` **16/18**：`bytecode.rs` 982 行（39 指令 + 16 B 定长编码 + `Program::encode/decode`）、`vm.rs` 2107 行（预算/取消/软失败/unknown 降级/`Node` 树）；33 测试；**缺 AST→字节码编译器**（A0 的 AST 与 A1 的 `Op` 尚未接线） |
+| A1 | 字节码 + VM（预算、取消、软失败、`Node` 树） | 18 | 死循环 5s 内 E2001；越界字段降级 unknown | `[x]` **18/18**：`bytecode.rs` 982 行（39 指令 + 16 B 定长编码）、`vm.rs` 2107 行（预算/取消/软失败/unknown 降级）、**`compile.rs` 2650 行（AST→字节码：结构展开/数组/`@`/`if`/控制流/端序）**；45 测试；真实 ZIP 端到端跑通（`geode --bspec zip.bspec --entry ZipLocalFileHeader` → 13 节点/30 B/25 步） |
 | A1.5 | Verifier：I2/I4/I6/I7/I9/I10 + 配置 + 报告 | 12 | 可脱离 AI 单用；误报率 <5% | `[x]` **骨架完成**：`verify.rs` 243 行、6 条不变量、`VerifyCfg`/`VerifyReport`、5 测试；**待接入编译器输出** |
-| A2 | 结构树 UI + 双向联动（`Layer::Structure`） | 15 | 点树跳 hex、点 hex 反查 <10ms | `[ ]` |
+| A2 | 结构树 UI + 双向联动（`Layer::Structure`） | 15 | 点树跳 hex、点 hex 反查 <10ms | `[~]` **2/5**：`geode-ui::structure` 纯模型（投影/展开/`reveal` 反查/隐藏字段过滤）+ 9 测试；**未做** egui 渲染、面板接线、双向联动 |
 | A3 | `.gmagic` 匹配 + 模板自动加载编排 | 8 | 206 格式规则集可加载 | `[ ]` |
 | A4 | 增量重解析（顶层 `@` 单元 + dirty ranges） | 12 | 改 1 字节只重解析受影响单元 | `[ ]` |
 
@@ -103,6 +103,7 @@ T1.2 是全项目最危险的一块（R1：静默数据损坏），必须先有 
 
 ## 4 进度日志（只追加，不改旧行）
 
+- 2026-11-11 M3：AST→字节码编译器落地（2650 行），ZIP 端到端跑通；`.gmagic` 解析与匹配引擎落地（1307 行 + schema + 4 向量）；结构树纯模型（9 测试）；471 测试 / 37,350 行。
 - 2026-11-10 M3 A0/A1 落地：`geode-bspec` 4.3k 行前端 + 3.1k 行字节码/VM，424 测试；M2 收尾 radix+ScrollModel 完成（`format_row` 40 ns）。
 - 2026-11-10 M3 开工：A0 前端、A1 字节码 VM 派工；A1.5 Verifier 骨架落地（`crates/geode-bspec/src/verify.rs`，I2/I4/I6/I7/I9/I10，5 测试）；M2 收尾（radix + ScrollModel + bench）并行。
 - 2026-11-10 M2 第一波：T2.3/T2.4/T2.5/T2.6/T2.7 完成，T2.1 代码完成、T2.2 3/5；新增 `geode-search`、`geode-analysis` 两个 crate；测试 194→331。

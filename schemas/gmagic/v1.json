@@ -1,0 +1,366 @@
+{
+  "type": "object",
+  "description": "23 §3.7 `.gmagic` 规则集根对象；未知字段保留（D3），由加载器校验。",
+  "properties": {
+    "schema_version": {
+      "description": "23 §3.7 版本字段，当前恒为 1；缺省 ⇒ EB004，>1 ⇒ EB001。",
+      "const": 1
+    },
+    "kind": {
+      "description": "23 §3.7 文件类型判别，恒为 \"gmagic\"；不符 ⇒ EB002。",
+      "const": "gmagic"
+    },
+    "magic": {
+      "description": "23 §3.7 规则集合：数组形式每项自带 id，表形式以 `[magic.<id>]` 表键为 id。",
+      "oneOf": [
+        {
+          "type": "array",
+          "description": "23 §3.7 规则数组形式；1..=10000 条（EB020），每项必须自带 id。",
+          "minItems": 1,
+          "maxItems": 10000,
+          "items": {
+            "type": "object",
+            "description": "23 §3.7 单条 magic 规则。",
+            "properties": {
+              "id": {
+                "description": "23 §3.7 规则唯一 id，匹配 ^[a-z0-9][a-z0-9._-]{0,63}$；重复 ⇒ EB010。",
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+              },
+              "name": {
+                "description": "23 §3.7 规则展示名；缺省时回退为 id。",
+                "type": "string"
+              },
+              "mime": {
+                "description": "23 §3.7 MIME 类型 type/subtype，长度 ≤128；缺失 ⇒ EB004。",
+                "type": "string",
+                "pattern": "^[A-Za-z0-9+._-]+/[A-Za-z0-9+._-]+$"
+              },
+              "ext": {
+                "description": "23 §3.7 扩展名列表，≤16 项、不含点、匹配 ^[a-z0-9]{1,16}$。",
+                "type": "array",
+                "maxItems": 16,
+                "items": {
+                  "type": "string",
+                  "description": "23 §3.7 单个小写扩展名，不含点。",
+                  "pattern": "^[a-z0-9]{1,16}$"
+                }
+              },
+              "kind": {
+                "description": "23 §3.7 UI 分组枚举，缺省为 data；不参与字节匹配。",
+                "enum": [
+                  "image",
+                  "audio",
+                  "video",
+                  "archive",
+                  "exec",
+                  "doc",
+                  "data",
+                  "db",
+                  "font",
+                  "diskimage",
+                  "capture",
+                  "rom",
+                  "other"
+                ]
+              },
+              "weight": {
+                "description": "23 §3.7 命中加分，-100..=100，缺省 0；与 priority 同义。",
+                "type": "integer",
+                "minimum": -100,
+                "maximum": 100
+              },
+              "priority": {
+                "description": "23 §3.7 排序优先级（weight 的 API 名），-100..=100，越大越靠前。",
+                "type": "integer",
+                "minimum": -100,
+                "maximum": 100
+              },
+              "read": {
+                "description": "23 §3.7 可读窗口字节数，1..=4096，缺省 64；越界 ⇒ EB005。",
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 4096
+              },
+              "template": {
+                "description": "23 §3.7 模板提示，原样字符串保存，不在此处解析 BinSpec。",
+                "type": "string"
+              },
+              "min_size": {
+                "description": "23 §3.7 规则要求的最小文件长度，缺省 0；更短的文件直接不匹配。",
+                "type": "integer",
+                "minimum": 0
+              },
+              "patterns": {
+                "description": "23 §3.7 定长 pattern 列表，≤64 条（EB020）；任一命中即规则命中。",
+                "type": "array",
+                "maxItems": 64,
+                "items": {
+                  "description": "23 §3.7 单条 pattern，按 type 区分 bytes/ascii/u16/u32。",
+                  "oneOf": [
+                    {
+                      "type": "object",
+                      "description": "23 §3.7 bytes pattern：定长字节串，可带掩码。",
+                      "properties": {
+                        "type": {
+                          "description": "10 §4.5 指令类型，恒为 bytes。",
+                          "const": "bytes"
+                        },
+                        "offset": {
+                          "description": "23 §3.7 相对文件头的偏移，0..=4095，缺省 0。",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4095
+                        },
+                        "off": {
+                          "description": "23 §3.7 offset 的文档别名，二者同时出现时必须相等。",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4095
+                        },
+                        "bytes": {
+                          "description": "23 §3.7 期望字节：偶数长度 hex 字符串或 0..=255 数组。",
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "description": "23 §3.7 连续 hex 字符串，每字节两位。",
+                              "pattern": "^(0[xX])?([0-9A-Fa-f]{2})+$"
+                            },
+                            {
+                              "type": "array",
+                              "description": "23 §3.7 字节数组写法。",
+                              "items": {
+                                "type": "integer",
+                                "description": "23 §3.7 单个字节值。",
+                                "minimum": 0,
+                                "maximum": 255
+                              }
+                            }
+                          ]
+                        },
+                        "mask": {
+                          "description": "23 §3.7 可选掩码，长度必须与 bytes 相等；先与后比。",
+                          "oneOf": [
+                            {
+                              "type": "string",
+                              "description": "23 §3.7 连续 hex 掩码，每字节两位。",
+                              "pattern": "^(0[xX])?([0-9A-Fa-f]{2})+$"
+                            },
+                            {
+                              "type": "array",
+                              "description": "23 §3.7 掩码字节数组写法。",
+                              "items": {
+                                "type": "integer",
+                                "description": "23 §3.7 单个掩码字节。",
+                                "minimum": 0,
+                                "maximum": 255
+                              }
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "bytes"
+                      ],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "description": "23 §3.7 ascii pattern：定长 ASCII 文本。",
+                      "properties": {
+                        "type": {
+                          "description": "10 §4.5 指令类型，恒为 ascii。",
+                          "const": "ascii"
+                        },
+                        "offset": {
+                          "description": "23 §3.7 相对文件头的偏移，0..=4095，缺省 0。",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4095
+                        },
+                        "off": {
+                          "description": "23 §3.7 offset 的文档别名，二者同时出现时必须相等。",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4095
+                        },
+                        "text": {
+                          "description": "23 §3.7 期望 ASCII 文本，不能为空且只能是 ASCII。",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "text"
+                      ],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "description": "23 §3.7 u16 pattern：16 位无符号整数比较。",
+                      "properties": {
+                        "type": {
+                          "description": "10 §4.5 指令类型，恒为 u16。",
+                          "const": "u16"
+                        },
+                        "offset": {
+                          "description": "23 §3.7 相对文件头的偏移，0..=4095，缺省 0。",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4095
+                        },
+                        "off": {
+                          "description": "23 §3.7 offset 的文档别名，二者同时出现时必须相等。",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4095
+                        },
+                        "value": {
+                          "description": "23 §3.7 期望的 16 位无符号整数，0..=65535。",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 65535
+                        },
+                        "endian": {
+                          "description": "23 §3.7 字节序，big/be 为大端、little/le 为小端，缺省大端。",
+                          "enum": [
+                            "big",
+                            "little",
+                            "be",
+                            "le"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "value"
+                      ],
+                      "additionalProperties": true
+                    },
+                    {
+                      "type": "object",
+                      "description": "23 §3.7 u32 pattern：32 位无符号整数比较。",
+                      "properties": {
+                        "type": {
+                          "description": "10 §4.5 指令类型，恒为 u32。",
+                          "const": "u32"
+                        },
+                        "offset": {
+                          "description": "23 §3.7 相对文件头的偏移，0..=4095，缺省 0。",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4095
+                        },
+                        "off": {
+                          "description": "23 §3.7 offset 的文档别名，二者同时出现时必须相等。",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4095
+                        },
+                        "value": {
+                          "description": "23 §3.7 期望的 32 位无符号整数，0..=4294967295。",
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 4294967295
+                        },
+                        "endian": {
+                          "description": "23 §3.7 字节序，big/be 为大端、little/le 为小端，缺省大端。",
+                          "enum": [
+                            "big",
+                            "little",
+                            "be",
+                            "le"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "type",
+                        "value"
+                      ],
+                      "additionalProperties": true
+                    }
+                  ]
+                }
+              },
+              "test": {
+                "description": "23 §3.7 文档形式条件列表，1..=16 条；与 patterns 互斥，全部必需条件命中才算规则命中。",
+                "type": "array",
+                "maxItems": 16,
+                "items": {
+                  "type": "object",
+                  "description": "23 §3.7 单条 test 条件；off 与 jump 互斥。",
+                  "properties": {
+                    "off": {
+                      "description": "23 §3.7 相对文件头的偏移，0..=4095，缺省 0；与 jump 互斥。",
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4095
+                    },
+                    "jump": {
+                      "description": "23 §3.7 跳转到已读偏移，0..=4095；本引擎暂不支持（EB005）。",
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 4095
+                    },
+                    "len": {
+                      "description": "23 §3.7 读取长度，1..=256，且 off+len 不超过 read。",
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 256
+                    },
+                    "value": {
+                      "description": "23 §3.7 比较值，文档要求大写偶数长度 hex，字符数等于 2*len。",
+                      "type": "string",
+                      "pattern": "^([0-9A-Fa-f]{2})+$"
+                    },
+                    "mask": {
+                      "description": "23 §3.7 可选掩码，与 value 等长，先与后比。",
+                      "type": "string",
+                      "pattern": "^([0-9A-Fa-f]{2})+$"
+                    },
+                    "op": {
+                      "description": "23 §3.7 比较操作；本引擎只实现 eq，其它值 ⇒ EB005。",
+                      "enum": [
+                        "eq",
+                        "ne",
+                        "lt",
+                        "gt",
+                        "in_range",
+                        "contains"
+                      ]
+                    },
+                    "required": {
+                      "description": "23 §3.7 是否为必需证据；false 表示可选证据，缺省 true。",
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "len",
+                    "value"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            },
+            "required": [
+              "id",
+              "mime"
+            ],
+            "additionalProperties": true
+          }
+        },
+        {
+          "type": "object",
+          "description": "23 §3.7 表形式 `[magic.<id>]`：键为规则 id；因动态键与 additionalProperties=true 约束，字段级校验由加载器完成。",
+          "additionalProperties": true
+        }
+      ]
+    }
+  },
+  "required": [
+    "schema_version",
+    "magic"
+  ],
+  "additionalProperties": true
+}

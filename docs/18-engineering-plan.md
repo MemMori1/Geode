@@ -119,7 +119,7 @@ geode/
 | geode-content | 2 | core, bspec（模板装载） |
 | geode-plugin-host | 2 | core, annot, provider, viz（同层显式例外：注册插件可视化器） |
 | geode-ui | 3 | **全部 L2/L3 + L1/L0**，且唯一可依赖 egui/egui-wgpu/wgpu/winit/crossbeam |
-| app | 4 | 全部 + geode-ui；外加接线所需的 core / provider / buffer / format（app 是唯一允许"拿具体 Provider 实现组装"的层） |
+| app | 4 | 全部 + geode-ui；外加接线所需的 core / provider / buffer / format（app 是唯一允许"拿具体 Provider 实现组装"的层）。`xtask` 的 MATRIX 把"全部"展开成显式清单：core, buffer, provider, annot, format, project, ui, plugin-host, bspec, analysis, search, viz, proc, diff, disasm, yara, migrate, content, ai |
 
 三条机器可判定的规则：**①** 除 `geode-ui`/`app` 外任何 crate 的依赖树中不得出现 `egui*`/`wgpu`/`winit`/`arboard`/`egui_kittest`；**②** `dep.layer >= pkg.layer` 即失败；**③** 目标不在上表 = 失败（防止"顺手加个依赖"）。**允许例外只有一条**：`--cfg test` 下可依赖 `egui_kittest`（仅 `geode-ui`）。任何例外必须写进本节表格，不允许内联 `#[allow]` 绕过。
 

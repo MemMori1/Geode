@@ -17,6 +17,8 @@ geode-core = { workspace = true }
 geode-provider = { workspace = true }
 geode-buffer = { workspace = true }
 geode-ui = { workspace = true }
+geode-bspec = { workspace = true }
+geode-analysis = { workspace = true }
 eframe = { workspace = true }
 egui = "0.32"
 

@@ -16,5 +16,6 @@ pub mod composite;
 pub mod grid;
 pub mod scroll;
 pub mod selection;
+pub mod structure;
 
 pub use grid::{CellMetrics, paint_cells, paint_text_cells};

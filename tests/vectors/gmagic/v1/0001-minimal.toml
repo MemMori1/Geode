@@ -1,0 +1,17 @@
+# `.gmagic` v1 最小规则集：1 条 PNG 规则（23 §3.7）。
+
+schema_version = 1
+kind = "gmagic"
+
+[magic.png]
+name = "PNG 图像"
+mime = "image/png"
+ext = ["png"]
+priority = 10
+template = "builtin/png"
+min_size = 8
+
+[[magic.png.patterns]]
+type = "bytes"
+offset = 0
+bytes = "89504E470D0A1A0A"

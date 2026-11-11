@@ -26,6 +26,7 @@ fn main() -> ExitCode {
             println!("geode {VERSION}");
             ExitCode::SUCCESS
         }
+        Some("--bspec") => run_bspec(&args[1..]),
         Some("--inspect") => match args.get(1) {
             Some(path) => match inspect(path) {
                 Ok(()) => ExitCode::SUCCESS,
@@ -53,11 +54,111 @@ fn main() -> ExitCode {
     }
 }
 
+/// `geode --bspec <模板.bspec> --entry <名字> <文件>`：编译模板、解析文件、打印结构树。
+fn run_bspec(args: &[String]) -> ExitCode {
+    let mut template = None;
+    let mut entry = None;
+    let mut file = None;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--entry" => {
+                i += 1;
+                entry = args.get(i).cloned();
+            }
+            other if other.starts_with('-') => {
+                eprintln!("未知参数 `{other}`");
+                return ExitCode::FAILURE;
+            }
+            other => {
+                if template.is_none() {
+                    template = Some(other.to_string());
+                } else if file.is_none() {
+                    file = Some(other.to_string());
+                }
+            }
+        }
+        i += 1;
+    }
+    let (Some(template), Some(entry), Some(file)) = (template, entry, file) else {
+        eprintln!("用法: geode --bspec <模板.bspec> --entry <struct|fn 名> <文件>");
+        return ExitCode::FAILURE;
+    };
+    match bspec(&template, &entry, &file) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            eprintln!("{e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn bspec(template: &str, entry: &str, file: &str) -> Result<(), String> {
+    let text =
+        std::fs::read_to_string(template).map_err(|e| format!("读模板 `{template}` 失败：{e}"))?;
+    let ast = geode_bspec::parser::parse_source(&text).map_err(|diags| {
+        let mut out = String::from("模板有语法错误：\n");
+        for d in diags {
+            out.push_str(&format!("  {} {} @{:?}\n", d.code.0, d.detail, d.range));
+        }
+        out
+    })?;
+    let program = geode_bspec::compile::Compiler::compile(&ast, entry).map_err(|diags| {
+        let mut out = String::from("模板编译失败：\n");
+        for d in diags {
+            out.push_str(&format!("  {} {} @{:?}\n", d.code.0, d.detail, d.range));
+        }
+        out
+    })?;
+    let provider = FileProvider::open(file).map_err(|e| e.to_string())?;
+    let size = provider.size().lower_bound();
+    let (data, _) = provider
+        .read_exact_vec(Offset::ZERO, size)
+        .map_err(|e| e.to_string())?;
+    let mut vm = geode_bspec::vm::Vm::new(&program, &data);
+    let out = vm.run().map_err(|e| format!("执行失败：{e}"))?;
+    println!(
+        "{}  ——  {} 个节点，覆盖 {} B / {} B（{:.1}%），{} 步",
+        file,
+        out.root.count(),
+        out.root.covered_bytes(),
+        data.len(),
+        if data.is_empty() {
+            0.0
+        } else {
+            out.root.covered_bytes() as f64 * 100.0 / data.len() as f64
+        },
+        out.steps
+    );
+    for d in &out.diags {
+        println!("  [{}] {} @{:?}", d.severity as u8, d.detail, d.range);
+    }
+    print_node(&out.root, 0);
+    Ok(())
+}
+
+fn print_node(node: &geode_bspec::node::Node, depth: usize) {
+    let pad = "  ".repeat(depth);
+    let value = node
+        .value
+        .as_ref()
+        .map(|v| format!(" = {}", geode_ui::structure::value_text(v)))
+        .unwrap_or_default();
+    println!(
+        "{pad}{} : {} @0x{:X} +{}{value}",
+        node.name, node.type_name, node.offset, node.size
+    );
+    for c in &node.children {
+        print_node(c, depth + 1);
+    }
+}
+
 fn print_help() {
     println!(
         "geode {VERSION} — 二进制结构分析工具（M2 视图）\n\n\
          用法: geode <文件>            打开图形窗口\n     \
-               geode --inspect <文件>  无窗口探测（打印大小/caps/头部 256B）\n\
+               geode --inspect <文件>  无窗口探测（打印大小/caps/头部 256B）\n     \
+               geode --bspec <模板> --entry <名字> <文件>  用 BinSpec 解析并打印结构树\n\
          选项:\n  \
            -h, --help     显示本帮助\n  \
            -V, --version  显示版本\n\n\

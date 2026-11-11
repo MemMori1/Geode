@@ -1,0 +1,21 @@
+# `.gmagic` v1 测试向量（23 §3.7；执行语义见 crates/geode-analysis/tests/magic.rs）
+
+[[vector]]
+path = "0001-minimal.toml"
+expect = "ok"
+note = "最小可用：1 条 PNG 规则、1 条 bytes pattern"
+
+[[vector]]
+path = "0002-dup-id.toml"
+expect = "EB010"
+note = "数组形式两条规则同 id；重复 id 拒绝"
+
+[[vector]]
+path = "0003-bad-offset.toml"
+expect = "EB005"
+note = "offset 4095 + 4 字节越过 4096 读取窗口"
+
+[[vector]]
+path = "0004-unknown-pattern.toml"
+expect = "EB031"
+note = "pattern 类型 regex 未登记；未知类型拒绝"

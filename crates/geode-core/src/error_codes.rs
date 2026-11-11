@@ -324,6 +324,9 @@ pub const EB029: Code = Code("EB029");
 /// `EB030`：校验收紧导致旧文件不达标
 pub const EB030: Code = Code("EB030");
 
+/// `EB031`：未知 magic pattern 类型
+pub const EB031: Code = Code("EB031");
+
 /// `EB101`：迁移源语法无法解析
 pub const EB101: Code = Code("EB101");
 
@@ -493,6 +496,7 @@ pub const ALL: &[Code] = &[
     EB028,
     EB029,
     EB030,
+    EB031,
     EB101,
     EB102,
     EB201,

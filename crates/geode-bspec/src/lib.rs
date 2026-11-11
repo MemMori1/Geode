@@ -11,6 +11,7 @@
 
 pub mod ast;
 pub mod bytecode;
+pub mod compile;
 pub mod diag;
 pub mod lexer;
 pub mod node;
@@ -19,3 +20,5 @@ pub mod span;
 pub mod value;
 pub mod verify;
 pub mod vm;
+
+pub use compile::Compiler;

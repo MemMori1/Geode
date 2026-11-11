@@ -201,18 +201,46 @@ samples = [{ path = "samples/min.zip", sha256 = "b1e4…", size = 118 }]; previe
 schema_version = 1                                   # ← 最小可用
 [magic.png]
 mime = "image/png"
-[[magic.png.test]] off = 0; len = 8; value = "89504E470D0A1A0A"
+[[magic.png.test]]
+off = 0
+len = 8
+value = "89504E470D0A1A0A"
 ```
 ```toml
-schema_version = 1; kind = "gmagic"                  # ← 完整
+schema_version = 1
+kind = "gmagic"                                        # ← 完整
+
 [magic.png]
-mime = "image/png"; ext = ["png"]; kind = "image"; weight = 10; read = 64
-[[magic.png.test]] off = 0;  len = 8; mask = "ffffffffffffffff"; value = "89504E470D0A1A0A"
-[[magic.png.test]] off = 12; len = 4; value = "49484452"; required = false
+mime = "image/png"
+ext = ["png"]
+kind = "image"
+weight = 10
+read = 64
+
+[[magic.png.test]]
+off = 0
+len = 8
+mask = "FFFFFFFFFFFFFFFF"
+value = "89504E470D0A1A0A"
+
+[[magic.png.test]]
+off = 12
+len = 4
+value = "49484452"
+required = false
+
 [magic.elf]
-mime = "application/x-elf"; ext = ["elf", "so", "o"]; kind = "exec"; weight = 20; read = 32
-[[magic.elf.test]] off = 0; len = 4; value = "7F454C46"    # 同规则多条件：全部命中才判定
-[[magic.elf.test]] off = 4; len = 1; op = "in_range"; value = "0102"
+mime = "application/x-elf"
+ext = ["elf", "so", "o"]
+kind = "exec"
+weight = 20
+read = 32
+
+# 同规则多条件：全部命中才判定
+[[magic.elf.test]]
+off = 0
+len = 4
+value = "7F454C46"
 ```
 
 **迁移规则**：v1 起（`kind` 缺省的推断属 v1，不 bump）。市场下发更高 `schema_version` 的库 ⇒ **该库整体跳过并告警**（EB001），其它库照常加载（同 `见 15 §4.1` 的单库降级原则）。
@@ -416,12 +444,13 @@ geode fmt-project [--check] [--json] <path>...
 ### 9.1 向量目录与格式（**规范的一部分**）
 
 ```
-tests/vectors/<format>/v<N>/<NNNN>-<slug>/{input.<ext>, expect.json, golden.<ext>?, base.bin?}
-例：geows/v1/0001-minimal · geoproj/v1/0004-no-fingerprint · geopkg/v1/0002-zip-slip · geopkg/v1/0003-bomb · geopatch/v1/0001-overwrite-1b
-    geopatch/v1/0003-crc-flip · geopatch/v1/0005-seq-gap · gmagic/v1/0003-unknown-op · geojournal/v1/0002-partial-crc · geojournal/v1/0003-base-mismatch
+tests/vectors/<format>/v<N>/<NNNN>-<slug>.<ext>   # 扁平样本
+tests/vectors/<format>/v<N>/manifest.toml          # 每条样本的 path / expect / note
+例：geows/v1/0001-minimal.toml · geoproj/v1/0004-duplicate-id.toml · geopatch/v1/0003-bad-header-crc.bin
+    geojournal/v1/0004-frame-crc-flip.bin · gmagic/v1/0004-unknown-pattern.toml
 ```
 
-**规则**：① 每格式**至少 3 个故意损坏向量**，合计覆盖 版本过新 / CRC / 截断 / zip slip / manifest 缺字段 / base 指纹不符 六类；② `input.*` 不可被测试修改（只读挂载，断言字节与 mtime 不变）；③ 二进制向量的期望结果全在 `expect.json`，不依赖 `golden.*` 存在；④ `golden.*` 只用于**规范化往返**（`fmt` 幂等），不用于语义判定；⑤ 每个字段至少 1 个"缺它/写错它"的向量——**字段未被向量覆盖即视为未规范化**。
+**规则**：① 每格式**至少 3 个故意损坏向量**，合计覆盖 版本过新 / CRC / 截断 / zip slip / manifest 缺字段 / base 指纹不符 六类；② 样本文件不可被测试修改（只读打开）；③ 期望结果写在 `manifest.toml` 的 `expect` 字段（`"ok"` 或错误码），不依赖独立 `expect.json`；④ `cargo xtask vectors-check` 校验 manifest 结构（≥1 条 `ok`、≥3 条损坏、note 非空、错误码已登记），**不执行**字节级语义——字节级断言在各 crate 的集成测试里；⑤ 每个字段至少 1 个"缺它/写错它"的向量——**字段未被向量覆盖即视为未规范化**。
 
 ```json
 { "vector": "geopatch/v1/0003-crc-flip", "format": "geopatch", "schema_version": 1, "verdict": "reject", "codes": ["EB011"],

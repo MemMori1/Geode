@@ -152,6 +152,9 @@ cargo run -p xtask -- docs-errors     # 126 个错误码与文档一致
 - [x] **M0 骨架（部分）**：workspace + `xtask deps` 四条门禁 + 三平台 CI + `geode-core` + `geode-provider`（`pread`）+ `geode-buffer` 只读 + `app` CLI —— 2052 行 Rust、31 测试、4 GiB 稀疏文件打开 **0.013 ms**（`ad5e8f6` → `8a9ad4b`）
 - [x] 页面设计稿与可点原型（`docs/img/pages/`、`docs/img/mockup.html`，8 屏 × 3 主题）
 - [x] **M1 编辑与持久化（代码完成）**：piece table + 计数树、覆盖编辑与撤销、patch 桥、原子保存、journal 四道关卡 —— `ca66b45` / `ed75b14`；194 测试
+- [x] **M3 A0/A1 全链路（前端 + 编译器 + VM）**：`geode --bspec 模板 --entry X 文件` 可真解析 ZIP
+- [x] **M3 A3 前半（.gmagic 解析 + 匹配）**：1307 行 + schema + 4 向量
+- [x] **M3 A2 前半（结构树纯模型）**：展开/`reveal` 反查/隐藏字段，9 测试
 - [x] **M3 A0/A1（BinSpec 前端 + 字节码 VM）**：lexer/parser/AST 4260 行、39 条指令的定长字节码与 VM 3089 行、Verifier 骨架 —— 424 测试
 - [x] **M2 第一波（视图与分析）**：窗口骨架（eframe + 自绘比例尺滚动条）、选区模型、高亮合成、Inspector（20 类型）、四引擎搜索、分析工具箱 —— 331 测试、9 个 crate
 - [ ] **M0 收尾**：M0② 的滚动 p99 还没测（窗口已能开，但验收要 30 s 采样与真实显示器）
@@ -164,13 +167,13 @@ cargo run -p xtask -- docs-errors     # 126 个错误码与文档一致
 
 | 指标 | 值 |
 |---|---|
-| 提交 | **39**（`main == origin/main`） |
-| Rust | **31,883 行** / 10 crate |
-| 测试 | **424**（fmt / clippy -D warnings / deps / schema / vectors / docs-errors 全绿） |
+| 提交 | **40**（`main == origin/main`） |
+| Rust | **37,350 行** / 12 crate |
+| 测试 | **471**（fmt / clippy -D warnings / deps / schema / vectors / docs-errors 全绿） |
 | 文档 | 28 份 + 20 篇 ADR ≈ 1.3 万行 |
 | 硬数字 | 4 GiB 打开 0.013 ms · 10 万 piece 定位 0.48 µs · 15,360 图元 0.83 ms |
 
-**下一步**：M3 A1 的最后一层——**AST→字节码编译器**（A0 的 AST 与 A1 的 `Op` 之间还没接线）；并行的 M2 尾巴是 Sarasa 字体、像素基线与 `scroll_p99`。
+**下一步**：A2 结构面板接 egui、A3 的 206 条内置规则与自动加载、A4 增量重解析；M2 尾巴是 Sarasa 字体、像素基线与 `scroll_p99`。
 
 ---
 

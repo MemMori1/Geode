@@ -1,0 +1,16 @@
+// ZIP Local File Header（PK\x03\x04，固定 30 字节）。
+#pragma endian = little;
+
+struct ZipLocalFileHeader : 30 {
+    u32 signature;        // 0x04034b50
+    u16 version_needed;   // 20
+    u16 flags;
+    u16 method;
+    u16 mod_time;
+    u16 mod_date;
+    u32 crc32;
+    u32 compressed_size;
+    u32 uncompressed_size;
+    u16 file_name_len;
+    u16 extra_len;
+}

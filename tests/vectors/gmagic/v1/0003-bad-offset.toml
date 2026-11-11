@@ -1,0 +1,13 @@
+# offset + len 越界：offset 4095 + 4 字节 = 4099 > 默认 read 4096（EB005）。
+
+schema_version = 1
+
+[magic.bad]
+name = "越界规则"
+mime = "application/octet-stream"
+read = 4096
+
+[[magic.bad.patterns]]
+type = "bytes"
+offset = 4095
+bytes = "00010203"
