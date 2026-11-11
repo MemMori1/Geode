@@ -142,6 +142,17 @@ fn at_offset_seeks_before_field() {
     assert_eq!(second.offset, 0x10);
     assert_eq!(second.size, 4);
     assert_eq!(second.value, Some(Value::UInt(9)));
+
+    let padded = run(
+        r#"struct Padded : 6 { u8 a; padding[2]; u8 b; }"#,
+        "Padded",
+        &[1, 0, 0, 2, 0, 0],
+    );
+    let node = &padded.root.children[0];
+    assert_eq!(node.size, 6);
+    assert_eq!(names(node), ["a", "b"]);
+    assert_eq!(child(node, "b").offset, 3);
+    assert_eq!(child(node, "b").value, Some(Value::UInt(2)));
 }
 
 #[test]
@@ -170,6 +181,25 @@ fn conditional_field_true_and_false() {
     let node = &without_value.root.children[0];
     assert_eq!(node.size, 1);
     assert!(node.children.iter().all(|child| child.name != "value"));
+
+    let field_source = r#"
+        struct Flagged : 5 {
+            u8 flag;
+            u32 payload if flag == 1;
+        }
+    "#;
+    let present = run(field_source, "Flagged", &[1, 0x78, 0x56, 0x34, 0x12]);
+    let flagged = &present.root.children[0];
+    assert_eq!(flagged.size, 5);
+    assert_eq!(
+        child(flagged, "payload").value,
+        Some(Value::UInt(0x1234_5678))
+    );
+
+    let absent = run(field_source, "Flagged", &[0, 0, 0, 0, 0]);
+    let flagged = &absent.root.children[0];
+    assert_eq!(flagged.size, 5);
+    assert!(flagged.children.iter().all(|child| child.name != "payload"));
 }
 
 #[test]
@@ -207,6 +237,19 @@ fn string_with_encoding_and_terminator() {
     assert_eq!(value.size, 4);
     assert_eq!(value.type_name, "str");
     assert_eq!(value.value, Some(Value::Str("abc".to_owned())));
+
+    // 无 term 的 str 在定长结构内默认读满结构剩余字节。
+    let fixed = run(
+        r#"struct FixedName : 4 { str(enc="ascii") value; }"#,
+        "FixedName",
+        b"abcd",
+    );
+    let node = &fixed.root.children[0];
+    assert_eq!(node.size, 4);
+    assert_eq!(
+        child(node, "value").value,
+        Some(Value::Str("abcd".to_owned()))
+    );
 }
 
 #[test]
@@ -272,26 +315,23 @@ fn zip_local_file_header_end_to_end() {
 }
 
 #[test]
-fn union_members_all_read_from_same_offset() {
-    let source = r#"
+fn union_enum_and_bitfield_emit_whole_repr_value() {
+    let union_source = r#"
         union Number : 4 {
             u32 as_u32;
             u16 low_word;
         }
     "#;
-    let output = run(source, "Number", &[0x78, 0x56, 0x34, 0x12]);
-    let union = &output.root.children[0];
+    let union_output = run(union_source, "Number", &[0x78, 0x56, 0x34, 0x12]);
+    let union = &union_output.root.children[0];
     assert_eq!(union.size, 4);
     assert_eq!(child(union, "as_u32").offset, 0);
     assert_eq!(child(union, "as_u32").value, Some(Value::UInt(0x1234_5678)));
     assert_eq!(child(union, "low_word").offset, 0);
     assert_eq!(child(union, "low_word").size, 2);
     assert_eq!(child(union, "low_word").value, Some(Value::UInt(0x5678)));
-}
 
-#[test]
-fn enum_and_bitfield_emit_whole_repr_value() {
-    let source = r#"
+    let tagged_source = r#"
         enum Kind : u8 { A = 1, B = 2 }
         bitfield Flags : u8 { low: 1; high: 2; _: 5; }
         struct Tagged : 2 {
@@ -299,8 +339,8 @@ fn enum_and_bitfield_emit_whole_repr_value() {
             Flags flags;
         }
     "#;
-    let output = run(source, "Tagged", &[2, 5]);
-    let node = &output.root.children[0];
+    let tagged_output = run(tagged_source, "Tagged", &[2, 5]);
+    let node = &tagged_output.root.children[0];
     assert_eq!(child(node, "kind").value, Some(Value::UInt(2)));
     assert_eq!(child(node, "kind").type_name, "Kind");
     assert_eq!(child(node, "flags").value, Some(Value::UInt(5)));
@@ -337,6 +377,18 @@ fn while_loop_with_variable_condition_is_unrolled() {
     let output = run(source, "two_items", &[7, 8]);
     assert_eq!(output.root.children.len(), 2);
     assert_eq!(output.root.children[1].value, Some(Value::UInt(8)));
+
+    let runtime_source = r#"
+        fn one_item() {
+            while (1) {
+                u8 item;
+                break;
+            }
+        }
+    "#;
+    let runtime_output = run(runtime_source, "one_item", &[42]);
+    assert_eq!(runtime_output.root.children.len(), 1);
+    assert_eq!(runtime_output.root.children[0].value, Some(Value::UInt(42)));
 }
 
 #[test]
@@ -370,6 +422,7 @@ fn unsized_array_reads_to_declared_struct_end() {
 fn sizeof_and_len_fold_at_compile_time() {
     let source = r#"
         struct Word : 4 { u32 value; }
+        struct Sized : 4 { u8 data[$size]; }
         fn use_sizeof() {
             let n = sizeof(Word);
             u8 bytes[n];
@@ -379,4 +432,9 @@ fn sizeof_and_len_fold_at_compile_time() {
     let output = run(source, "use_sizeof", &[1, 2, 3, 4, b'x', b'y', b'z']);
     assert_eq!(child(&output.root, "bytes").size, 4);
     assert_eq!(child(&output.root, "label").size, 3);
+
+    let sized = run(source, "Sized", &[9, 8, 7, 6]);
+    let data = child(&sized.root.children[0], "data");
+    assert_eq!(data.size, 4);
+    assert_eq!(data.value, Some(Value::Bytes(vec![9, 8, 7, 6])));
 }

@@ -14,7 +14,7 @@
 //! - 数组元素为结构体时逐个展开；基础类型数组用 `LoadBytes` 整体读取。
 //! - enum/bitfield 只按底层 `repr` 读取整体整数，不拆分 bitfield 成员。
 //! - `str` 的 `term` 在运行期才确定长度，因此其后的静态偏移未知；`str` 的
-//!   `max` 缺省为 4096 字节，避免读到文件尾这种无界读取。
+//!   `max` 缺省为当前定长结构的剩余字节，结构大小未知时退回 4096 字节。
 //!
 //! AST 当前没有 span 字段，本模块产生的所有诊断都带一个位于源码偏移 0 的
 //! 空 [`ByteRange`] 作为占位；错误码与细节文本是稳定的，range 仅用于满足
@@ -124,7 +124,6 @@ impl Decls {
 #[derive(Debug, Clone, Default)]
 struct EvalEnv {
     vars: HashMap<String, Value>,
-    file_size: Option<u64>,
 }
 
 /// 编译一个结构/联合体帧时的静态游标状态。
@@ -162,6 +161,8 @@ struct Gen<'a> {
     names: Vec<String>,
     types: Vec<String>,
     loops: Vec<LoopCtx>,
+    /// 当前结构体作用域内已读取的标量字段（用于 `if` 条件重读字段值）。
+    field_scopes: Vec<HashMap<String, FieldInfo>>,
 }
 
 /// 编译期循环上下文：运行期循环需要回填 `break`/`continue` 的跳转。
@@ -182,6 +183,24 @@ enum Flow {
     Break,
     Continue,
     Return,
+}
+
+/// 条件表达式中可重新读取的已读字段信息。
+#[derive(Debug, Clone, Copy)]
+struct FieldInfo {
+    offset: u64,
+    width: u8,
+    kind: FieldKind,
+    endian: Endian,
+}
+
+/// 条件字段的读取方式。
+#[derive(Debug, Clone, Copy)]
+enum FieldKind {
+    Unsigned,
+    Signed,
+    Float,
+    Bytes,
 }
 
 /// 表达式求值失败。
@@ -236,6 +255,7 @@ impl<'a> Gen<'a> {
             names: Vec::new(),
             types: Vec::new(),
             loops: Vec::new(),
+            field_scopes: Vec::new(),
         };
         compiler.read_image_base()?;
         Ok(compiler)
@@ -453,12 +473,14 @@ impl Gen<'_> {
             depth: depth.saturating_add(1),
         };
         self.emit_mark_struct(node_name, declared)?;
+        self.field_scopes.push(HashMap::new());
         for member in &decl.members {
             self.compile_member(member, &mut ctx, env)?;
         }
         if let Some(size) = declared {
             self.pad_to_declared(&mut ctx, size)?;
         }
+        self.field_scopes.pop();
         self.emit(Op::EndStruct)?;
         outer.cursor = ctx.cursor;
         Ok(())
@@ -521,6 +543,7 @@ impl Gen<'_> {
             depth: depth.saturating_add(1),
         };
         self.emit_mark_struct(node_name, Some(size))?;
+        self.field_scopes.push(HashMap::new());
         for member in &decl.members {
             let mut member = member.clone();
             if member.at.is_none() {
@@ -529,6 +552,7 @@ impl Gen<'_> {
             ctx.cursor = Some(start);
             self.compile_member(&member, &mut ctx, env)?;
         }
+        self.field_scopes.pop();
         self.emit(Op::Seek(end))?;
         self.emit(Op::EndStruct)?;
         outer.cursor = Some(end);
@@ -595,16 +619,25 @@ impl Gen<'_> {
         }
 
         if let Some(condition) = &member.cond {
-            let value = self.eval_bool(condition, env, ctx).map_err(|fail| {
-                eval_diag(
-                    &format!("字段 `{}` 的 if 条件必须是编译期常量", member.name),
-                    fail,
-                )
-            })?;
-            self.push_bool(value)?;
+            let value = match self.eval_bool(condition, env, ctx) {
+                Ok(value) => Some(value),
+                Err(_) if self.expr_uses_field(condition) => {
+                    self.compile_condition(condition, ctx, env)?;
+                    None
+                }
+                Err(fail) => {
+                    return Err(eval_diag(
+                        &format!("字段 `{}` 的 if 条件必须是编译期常量", member.name),
+                        fail,
+                    ));
+                }
+            };
+            if let Some(value) = value {
+                self.push_bool(value)?;
+            }
             let patch = self.code.len();
             self.emit(Op::JmpIfNot(0))?;
-            if value {
+            if value != Some(false) {
                 self.compile_member_body(member, ctx, env)?;
             }
             let target = self.code_len_u32()?;
@@ -623,6 +656,15 @@ impl Gen<'_> {
     ) -> CResult<()> {
         let endian = member_endian(member, ctx.endian)?;
         if let Some(offset_expr) = &member.at {
+            if !is_compile_time_expr(offset_expr) {
+                return Err(diag(
+                    error_codes::E4001,
+                    format!(
+                        "字段 `{}` 的 `@` 偏移必须是编译期常量（不能使用 `$`/`$size`/`$start`/`$end`）",
+                        member.name
+                    ),
+                ));
+            }
             let offset = self.eval_u64(offset_expr, env, ctx).map_err(|fail| {
                 eval_diag(
                     &format!("字段 `{}` 的 `@` 偏移必须是编译期常量", member.name),
@@ -632,6 +674,12 @@ impl Gen<'_> {
             self.emit(Op::Seek(offset))?;
             ctx.cursor = Some(offset);
         }
+        let field_offset = ctx.cursor;
+        let field_info = if member.array.is_none() {
+            self.field_info_for(&member.ty, endian)
+        } else {
+            None
+        };
         let saved = ctx.endian;
         ctx.endian = endian;
         let result = self.compile_type(
@@ -643,6 +691,11 @@ impl Gen<'_> {
             ctx.depth,
         );
         ctx.endian = saved;
+        if let (Some(offset), Some(info), Some(scope)) =
+            (field_offset, field_info, self.field_scopes.last_mut())
+        {
+            scope.insert(member.name.clone(), FieldInfo { offset, ..info });
+        }
         result
     }
 
@@ -1024,7 +1077,13 @@ impl Gen<'_> {
             (Some(size), Some(max)) => size.min(max),
             (Some(size), None) => size,
             (None, Some(max)) => max,
-            (None, None) => u64::from(DEFAULT_STR_MAX),
+            (None, None) => {
+                // 定长结构内默认读到当前帧末尾；否则使用保守上限。
+                ctx.end
+                    .zip(ctx.cursor)
+                    .and_then(|(end, cursor)| end.checked_sub(cursor))
+                    .unwrap_or(u64::from(DEFAULT_STR_MAX))
+            }
         };
         let max = u32::try_from(effective).map_err(|_| {
             diag(
@@ -1308,6 +1367,15 @@ impl Gen<'_> {
             merge_env(env, &loop_env);
             return Ok(flow);
         }
+        // 运行期 for 不会重新求值条件；因此条件必须能在这里折叠为 true。
+        if let Some(condition) = &stmt.cond {
+            let value = self
+                .eval_bool(condition, &mut loop_env, ctx)
+                .map_err(|fail| eval_diag("v1 的 for 条件必须是编译期常量", fail))?;
+            if !value {
+                return Ok(Flow::Normal);
+            }
+        }
         let flow = self.compile_runtime_for(stmt, ctx, &mut loop_env)?;
         merge_env(env, &loop_env);
         Ok(flow)
@@ -1577,6 +1645,47 @@ impl Gen<'_> {
         }
     }
 
+    fn field_info_for(&self, ty: &TypeRef, endian: Endian) -> Option<FieldInfo> {
+        let (width, kind) = match ty {
+            TypeRef::Prim(prim) => (prim.byte_size() as u8, field_kind(*prim)),
+            TypeRef::Ptr { kind, .. } => (kind.byte_size() as u8, FieldKind::Unsigned),
+            TypeRef::Named(name) => {
+                let repr = if let Some(index) = self.decls.enums.get(name).copied() {
+                    match self.program.items.get(index) {
+                        Some(Item::Enum(decl)) => decl.repr.as_ref(),
+                        _ => None,
+                    }
+                } else {
+                    let index = self.decls.bitfields.get(name).copied()?;
+                    match self.program.items.get(index) {
+                        Some(Item::Bitfield(decl)) => decl.repr.as_ref(),
+                        _ => None,
+                    }
+                };
+                let prim = match repr {
+                    None => Prim::U32,
+                    Some(TypeRef::Prim(prim)) => *prim,
+                    Some(_) => return None,
+                };
+                (prim.byte_size() as u8, field_kind(prim))
+            }
+            TypeRef::Str(_) | TypeRef::InlineStruct(_) => return None,
+        };
+        Some(FieldInfo {
+            offset: 0,
+            width,
+            kind,
+            endian,
+        })
+    }
+
+    fn lookup_field(&self, name: &str) -> Option<FieldInfo> {
+        self.field_scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).copied())
+    }
+
     fn is_leaf_type(&self, ty: &TypeRef) -> bool {
         match ty {
             TypeRef::Prim(_) | TypeRef::Ptr { .. } => true,
@@ -1788,6 +1897,17 @@ impl Gen<'_> {
     }
 }
 
+fn field_kind(prim: Prim) -> FieldKind {
+    match prim {
+        Prim::F16 | Prim::F32 | Prim::F64 => FieldKind::Float,
+        Prim::S8 | Prim::S16 | Prim::S24 | Prim::S32 | Prim::S48 | Prim::S64 | Prim::S128 => {
+            FieldKind::Signed
+        }
+        Prim::Char => FieldKind::Bytes,
+        _ => FieldKind::Unsigned,
+    }
+}
+
 fn advance(ctx: &mut FrameCtx, amount: u64) -> CResult<()> {
     if let Some(cursor) = ctx.cursor {
         ctx.cursor = Some(
@@ -1909,6 +2029,179 @@ fn merge_env(target: &mut EvalEnv, source: &EvalEnv) {
 }
 
 impl Gen<'_> {
+    fn expr_uses_field(&self, expr: &Expr) -> bool {
+        match expr {
+            Expr::Path(name) => self.lookup_field(name).is_some(),
+            Expr::Literal(_)
+            | Expr::Cursor
+            | Expr::FileSize
+            | Expr::StructStart
+            | Expr::StructEnd
+            | Expr::SizeOf(_) => false,
+            Expr::Unary { expr, .. } => self.expr_uses_field(expr),
+            Expr::Binary { lhs, rhs, .. } => self.expr_uses_field(lhs) || self.expr_uses_field(rhs),
+            Expr::Ternary {
+                cond,
+                then_expr,
+                else_expr,
+            } => {
+                self.expr_uses_field(cond)
+                    || self.expr_uses_field(then_expr)
+                    || self.expr_uses_field(else_expr)
+            }
+            Expr::Call { callee, args } => {
+                self.expr_uses_field(callee) || args.iter().any(|arg| self.expr_uses_field(arg))
+            }
+            Expr::Index { base, index } => {
+                self.expr_uses_field(base) || self.expr_uses_field(index)
+            }
+            Expr::Member { base, .. } => self.expr_uses_field(base),
+            Expr::Len(inner) => self.expr_uses_field(inner),
+            Expr::Assign { target, value, .. } => {
+                self.expr_uses_field(target) || self.expr_uses_field(value)
+            }
+        }
+    }
+
+    /// 编译一个包含已读字段引用的条件表达式，结果压入栈顶。
+    ///
+    /// 条件求值期间会临时 `Seek` 到字段偏移重新读取；求值结束后恢复当前游标，
+    /// 因而条件本身不会消费正在解析的字段。
+    fn compile_condition(
+        &mut self,
+        expr: &Expr,
+        ctx: &mut FrameCtx,
+        env: &mut EvalEnv,
+    ) -> CResult<()> {
+        let saved = ctx.cursor.ok_or_else(|| {
+            diag(
+                error_codes::E4001,
+                "v1 无法在游标未知的位置编译字段条件（前一个字段不是定长字段）",
+            )
+        })?;
+        self.compile_runtime_expr(expr, ctx, env)?;
+        self.emit(Op::Seek(saved))?;
+        ctx.cursor = Some(saved);
+        Ok(())
+    }
+
+    fn compile_runtime_expr(
+        &mut self,
+        expr: &Expr,
+        ctx: &mut FrameCtx,
+        env: &mut EvalEnv,
+    ) -> CResult<()> {
+        match expr {
+            Expr::Literal(literal) => self.push_value(&literal_value(literal)),
+            Expr::Path(name) => {
+                if let Some(info) = self.lookup_field(name) {
+                    self.emit(Op::Seek(info.offset))?;
+                    ctx.cursor = Some(info.offset);
+                    match info.kind {
+                        FieldKind::Unsigned => self.emit(Op::LoadU {
+                            width: info.width,
+                            endian: info.endian,
+                        })?,
+                        FieldKind::Signed => self.emit(Op::LoadI {
+                            width: info.width,
+                            endian: info.endian,
+                        })?,
+                        FieldKind::Float => self.emit(Op::LoadF {
+                            width: info.width,
+                            endian: info.endian,
+                        })?,
+                        FieldKind::Bytes => self.emit(Op::LoadBytes {
+                            len: u32::from(info.width),
+                        })?,
+                    }
+                    advance(ctx, u64::from(info.width))
+                } else {
+                    let value = self
+                        .eval_expr(expr, env, ctx)
+                        .map_err(|fail| eval_diag("条件表达式求值失败", fail))?;
+                    self.push_value(&value)
+                }
+            }
+            Expr::Unary { op, expr } => {
+                self.compile_runtime_expr(expr, ctx, env)?;
+                match op {
+                    UnaryOp::Pos => Ok(()),
+                    UnaryOp::Neg => self.emit(Op::Neg),
+                    UnaryOp::Not => self.emit(Op::Not),
+                    UnaryOp::BitNot => Err(diag(
+                        error_codes::E4001,
+                        "v1 的运行期条件不支持按位取反 `~`（请使用编译期常量）",
+                    )),
+                }
+            }
+            Expr::Binary { op, lhs, rhs } => {
+                self.compile_runtime_expr(lhs, ctx, env)?;
+                self.compile_runtime_expr(rhs, ctx, env)?;
+                let opcode = match op {
+                    BinaryOp::Add => Op::Add,
+                    BinaryOp::Sub => Op::Sub,
+                    BinaryOp::Mul => Op::Mul,
+                    BinaryOp::Div => Op::Div,
+                    BinaryOp::Rem => Op::Mod,
+                    BinaryOp::BitAnd => Op::And,
+                    BinaryOp::BitOr => Op::Or,
+                    BinaryOp::BitXor => Op::Xor,
+                    BinaryOp::Shl => Op::Shl,
+                    BinaryOp::Shr => Op::Shr,
+                    BinaryOp::Eq => Op::Eq,
+                    BinaryOp::Ne => Op::Ne,
+                    BinaryOp::Lt => Op::Lt,
+                    BinaryOp::Le => Op::Le,
+                    BinaryOp::Gt => Op::Gt,
+                    BinaryOp::Ge => Op::Ge,
+                    BinaryOp::And => Op::And,
+                    BinaryOp::Or => Op::Or,
+                    BinaryOp::Pow => {
+                        return Err(diag(
+                            error_codes::E4001,
+                            "v1 的运行期条件不支持幂运算 `**`（请使用编译期常量）",
+                        ));
+                    }
+                };
+                self.emit(opcode)
+            }
+            Expr::Ternary {
+                cond,
+                then_expr,
+                else_expr,
+            } => {
+                self.compile_runtime_expr(cond, ctx, env)?;
+                let otherwise = self.code.len();
+                self.emit(Op::JmpIfNot(0))?;
+                self.compile_runtime_expr(then_expr, ctx, env)?;
+                let done = self.code.len();
+                self.emit(Op::Jmp(0))?;
+                let else_start = self.code_len_u32()?;
+                patch_jump(&mut self.code, otherwise, else_start)?;
+                self.compile_runtime_expr(else_expr, ctx, env)?;
+                let end = self.code_len_u32()?;
+                patch_jump(&mut self.code, done, end)
+            }
+            Expr::Cursor
+            | Expr::FileSize
+            | Expr::StructStart
+            | Expr::StructEnd
+            | Expr::Call { .. }
+            | Expr::SizeOf(_)
+            | Expr::Len(_) => {
+                let value = self
+                    .eval_expr(expr, env, ctx)
+                    .map_err(|fail| eval_diag("条件表达式求值失败", fail))?;
+                self.push_value(&value)
+            }
+            Expr::Index { .. } | Expr::Member { .. } => Err(diag(
+                error_codes::E4001,
+                "v1 的运行期条件不支持索引/成员访问",
+            )),
+            Expr::Assign { .. } => Err(diag(error_codes::E4001, "v1 的条件表达式不能包含赋值")),
+        }
+    }
+
     fn eval_expr(&self, expr: &Expr, env: &mut EvalEnv, ctx: &FrameCtx) -> Result<Value, EvalFail> {
         self.eval_expr_inner(expr, env, ctx, 0)
     }
@@ -1938,15 +2231,15 @@ impl Gen<'_> {
                         "`$`（当前游标）在编译期未知；v1 要求前面的字段都是定长",
                     )
                 }),
-            Expr::FileSize => env
-                .file_size
-                .map(|value| Value::UInt(u128::from(value)))
-                .ok_or_else(|| {
-                    EvalFail::new(
-                        error_codes::E4001,
-                        "`$size`（文件大小）在编译期未知；v1 不支持依赖运行期文件大小的表达式",
-                    )
-                }),
+            Expr::FileSize => match (ctx.start, ctx.end) {
+                (Some(start), Some(end)) if end >= start => {
+                    Ok(Value::UInt(u128::from(end - start)))
+                }
+                _ => Err(EvalFail::new(
+                    error_codes::E4001,
+                    "v1 只在定长结构内支持 `$size`（当前结构大小编译期未知）",
+                )),
+            },
             Expr::StructStart => ctx
                 .start
                 .map(|value| Value::UInt(u128::from(value)))
@@ -2160,6 +2453,29 @@ impl Gen<'_> {
     fn eval_u64(&self, expr: &Expr, env: &mut EvalEnv, ctx: &FrameCtx) -> Result<u64, EvalFail> {
         let value = self.eval_expr(expr, env, ctx)?;
         value_to_u64(&value)
+    }
+}
+
+fn is_compile_time_expr(expr: &Expr) -> bool {
+    match expr {
+        Expr::Literal(_) | Expr::Path(_) | Expr::SizeOf(_) => true,
+        Expr::Cursor | Expr::FileSize | Expr::StructStart | Expr::StructEnd => false,
+        Expr::Unary { expr, .. } => is_compile_time_expr(expr),
+        Expr::Binary { lhs, rhs, .. } => is_compile_time_expr(lhs) && is_compile_time_expr(rhs),
+        Expr::Ternary {
+            cond,
+            then_expr,
+            else_expr,
+        } => {
+            is_compile_time_expr(cond)
+                && is_compile_time_expr(then_expr)
+                && is_compile_time_expr(else_expr)
+        }
+        Expr::Call { callee, args } => {
+            is_compile_time_expr(callee) && args.iter().all(is_compile_time_expr)
+        }
+        Expr::Len(expr) => is_compile_time_expr(expr),
+        Expr::Index { .. } | Expr::Member { .. } | Expr::Assign { .. } => false,
     }
 }
 
